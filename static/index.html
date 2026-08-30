@@ -1,0 +1,2410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HELIX · WORKBENCH</title>
+<style>
+/* ═══ MTRX v4 ═══════════════════════════════════════════════════════════════
+   Industrial, neutral, information-first. Depth comes from 1px hairline rules
+   and ONE step of surface value — no glow, no blur, no shadow, no gradient.
+   Colour is state, never decoration: green live · amber pending · red fault.
+   The only other two saturated hues are ODIN cyan and ALICE violet, and they
+   mean identity and nothing else.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#000000; --panel:rgba(0,0,0,0.4); --raise:#111111;
+  --rule:rgba(255,255,255,0.15); --rule2:rgba(255,255,255,0.3);
+  --edge:rgba(255,255,255,0.5); --cy:#00ffff;
+  --t1:#ffffff; --t2:#aaaaaa; --t3:#666666;
+  --live:#00ff00; --pend:#ffff00; --fault:#ff0000;
+  --odin:#00ffff; --alice:#ff00ff;
+  --mono:"IBM Plex Mono","Ubuntu Sans Mono","DejaVu Sans Mono",monospace;
+  --disp:"IBM Plex Sans Condensed","IBM Plex Sans","Inter",system-ui,sans-serif;
+  --sans:"Inter",system-ui,-apple-system,sans-serif;
+  --head:54px; --foot:58px; --rail:296px; --side:436px;
+  --ease:cubic-bezier(.2,.7,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--t1);font:12px/1.45 var(--mono);
+  -webkit-font-smoothing:antialiased;overflow:hidden}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:#2f2f34;border:2px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:#43434a}
+.lab{font:600 10px/1 var(--disp);letter-spacing:.19em;text-transform:uppercase;color:var(--t3)}
+.val{font-variant-numeric:tabular-nums;color:var(--t1)}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+.big{font:300 17px/1 var(--mono);color:#ffffff;font-variant-numeric:tabular-nums}
+/* a meter track: only for quantities with a real ceiling. Unbounded numbers get no bar. */
+.mtrack{height:3px;background:#0d0d10;border:1px solid #202024;width:100%}
+.mb{display:block;height:100%;background:var(--live);width:0;transition:width 110ms linear}
+.mb.warn{background:var(--pend)} .mb.bad{background:var(--fault)}
+/* THE SIGNATURE: a 40-second CPU trace. It is the one thing on this screen that moves, and it
+   moves only because the machine did. Idle reads as a flat unlit floor — which is the point. */
+.spark{display:flex;align-items:flex-end;gap:1px;height:19px;width:128px;padding:1px;
+  background:#0b1119;border:1px solid #202024}
+.spark i{flex:1;min-width:2px;background:var(--live);height:2%;min-height:1px;
+  box-shadow:0 0 4px rgba(74,222,128,.45)}
+.spark i.n{background:#2b2c33;height:2px;min-height:2px}
+
+/* Layer 0 — the two minds, under everything. Layer 1 is glass over them, so they read as
+   ambient light and never as sharp lines beneath text. */
+/* the minds live in the control rail. min-height:0 and overflow:hidden are load-bearing here:
+   a flex item defaults to min-height:auto, so a canvas that measures its parent grows it, which
+   grows the canvas — the loop that pinned the renderer on the banner build. */
+#mod-core #ent{display:block;width:100%;height:196px;flex:0 0 196px;min-height:0}
+#shell{position:relative;z-index:1;display:flex;flex-direction:column;height:100vh;width:100vw}
+@keyframes boot{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+@keyframes sweep{from{transform:translateY(0);opacity:.9}to{transform:translateY(100vh);opacity:0}}
+#head,.mod,#stream,#stage,#transport{animation:boot 300ms cubic-bezier(.2,.7,.3,1) both}
+.mod:nth-of-type(1){animation-delay:60ms} .mod:nth-of-type(2){animation-delay:110ms}
+.mod:nth-of-type(3){animation-delay:160ms} .mod:nth-of-type(4){animation-delay:210ms}
+.mod:nth-of-type(5){animation-delay:260ms}
+#stream{animation-delay:120ms} #stage{animation-delay:160ms} #transport{animation-delay:260ms}
+#bootline{position:fixed;left:0;right:0;top:0;height:1px;background:var(--cy);z-index:99;
+  pointer-events:none;box-shadow:0 0 14px 2px rgba(34,211,238,.65);
+  animation:sweep 720ms cubic-bezier(.4,0,.2,1) 80ms both}
+@media(prefers-reduced-motion:reduce){
+  #head,.mod,#stream,#stage,#bootline{animation:none;opacity:1;transform:none}
+  #bootline{display:none}
+}
+
+/* ── header rail ─────────────────────────────────────────────────────────── */
+#head{flex:0 0 var(--head);display:flex;align-items:stretch;
+  background:var(--panel);border-top:1px solid var(--edge);border-bottom:1px solid #000}
+#brand{display:flex;align-items:center;gap:8px;padding:0 18px;
+  border-right:1px solid var(--rule)}
+#brand b{font:600 19px/1 var(--disp);letter-spacing:.3em;color:var(--t1)}
+#brand .sub{font:600 9px/1 var(--disp);letter-spacing:.26em;color:var(--cy);opacity:.75}
+#vtag{font:600 9px/1 var(--disp);letter-spacing:.14em;color:var(--bg);background:var(--cy);
+  padding:3px 5px;margin-left:2px}
+.hcell{display:flex;flex-direction:column;justify-content:center;gap:6px;
+  padding:0 14px;border-right:1px solid var(--rule);white-space:nowrap;min-width:92px}
+.hstack{display:flex;align-items:flex-end;gap:10px}
+/* tokens, by mind, accumulated for the session */
+.hcell.budget{gap:4px;min-width:172px}
+.brow{display:flex;align-items:baseline;gap:9px;justify-content:flex-end}
+.bn{font:600 8px/1 var(--disp);letter-spacing:.16em;width:36px;text-align:left}
+.bn.odin{color:var(--odin)} .bn.alice{color:var(--alice)}
+.bv{font:300 12px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--t1)}
+.bsplit{height:2px;background:var(--alice);width:100%;overflow:hidden}
+.bsplit i{display:block;height:100%;width:0;background:var(--odin);
+  transition:width 200ms var(--ease)}
+#meters{margin-left:auto;display:flex}
+#meters .hcell{border-right:none;border-left:1px solid var(--rule);align-items:flex-end}
+#meters .hcell.wide{min-width:0}
+#meters .hcell:last-child{padding-right:18px}
+.warn{color:var(--pend)!important}
+.bad{color:var(--fault)!important}
+
+/* ── body ────────────────────────────────────────────────────────────────── */
+#main{flex:1;display:flex;min-height:0}
+/* the drawer: off-canvas, revealed by hovering its edge or pressing Tab */
+/* a rail, not a drawer: in flow and open by default, because the minds live in it now.
+   Tab collapses it; the tab strip on its edge brings it back. */
+#drawer{position:relative;flex:0 0 var(--rail);width:var(--rail);z-index:20;
+  background:var(--panel);border-right:1px solid var(--rule);overflow:auto;
+  margin-left:0;transition:margin-left 260ms cubic-bezier(.16,1,.3,1)}
+body.rail-hidden #drawer{margin-left:calc(-1 * var(--rail))}
+#drawer-tab{position:absolute;right:-26px;top:0;bottom:0;width:26px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+#drawer-tab span{width:3px;height:44px;background:var(--rule2);
+  transition:background 160ms var(--ease),height 160ms var(--ease)}
+#drawer:hover #drawer-tab span,#drawer.open #drawer-tab span{background:var(--cy);height:70px}
+.mod{background:rgba(10,17,24,.74);backdrop-filter:blur(16px) saturate(1.15);
+  -webkit-backdrop-filter:blur(16px) saturate(1.15)}
+.mod>h2{background:rgba(16,26,35,.72);backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px)}
+.mod{border-bottom:1px solid var(--rule)}
+.mod>h2{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  height:24px;padding:0 12px 0 20px;background:var(--raise);border-bottom:1px solid var(--rule);
+  border-top:1px solid #26272c;
+  font:600 10px/1 var(--disp);letter-spacing:.19em;text-transform:uppercase;color:var(--t3)}
+.mod>h2::before{content:"";position:absolute;left:11px;top:50%;margin-top:-5px;
+  width:2px;height:10px;background:var(--cy);opacity:.6}
+.mod>h2 .rv{color:var(--t2);font-variant-numeric:tabular-nums;letter-spacing:0}
+.mbody{padding:9px 10px}
+
+/* routing matrix — the centrepiece. A crosspoint is a real signal, never an ornament. */
+#mtx{display:grid;grid-template-columns:54px repeat(7,1fr);gap:4px;align-items:center}
+#mtx .ch{font:600 8px/1 var(--mono);letter-spacing:.06em;color:var(--t3);text-align:center;
+  padding-bottom:5px;border-bottom:1px solid var(--rule);margin-bottom:3px;
+  transition:color 90ms linear}
+#mtx .rh{font:600 9px/1 var(--mono);letter-spacing:.1em;color:var(--t3);white-space:nowrap;
+  transition:color 90ms linear}
+#mtx .ch.lit,#mtx .rh.lit{color:var(--t1)}
+#mtx .cw{display:flex;justify-content:center;align-items:center;height:19px}
+.xp{width:15px;height:15px;border:1px solid #1d3547;background:#0c131b;
+  transition:background 90ms linear,border-color 90ms linear,opacity 90ms linear}
+/* hovering a crosspoint dims everything off its row and column — how you read a patchbay */
+#mtx.hover .xp{opacity:.2}
+#mtx.hover .xp.hl{opacity:1}
+.xp.used{background:#17402a;border-color:#2b6742}
+.xp.active{background:var(--live);border-color:var(--live);
+  box-shadow:0 0 7px rgba(74,222,128,.75),0 0 16px rgba(74,222,128,.3)}
+.xp.pending{background:var(--pend);border-color:var(--pend);
+  box-shadow:0 0 7px rgba(251,191,36,.7)}
+.xp.err{background:var(--fault);border-color:var(--fault);
+  box-shadow:0 0 7px rgba(248,113,113,.7)}
+
+/* THE CORE — the two minds themselves. Every quantity the arc rings used to carry is still on
+   screen: CPU on the load arc drawn around whichever mind holds the turn (and in the header
+   trace), the memory budget on the MEMORY bar, sign-in hours in the header. */
+/* THE CORE AS GROUND. The canvas fills the rail; the panels float on it as glass. */
+/* bounded to the core band: a full-rail canvas puts ALICE's seat behind the lower panels */
+#ent{display:block;width:100%;height:100%}
+#railpanels{position:relative;z-index:1;display:flex;flex-direction:column;min-height:100%}
+/* the one band with no panel over it — where the minds are simply visible */
+#mod-core{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;
+  height:auto;flex:0 0 auto;min-height:0;overflow:hidden;cursor:pointer;
+  display:flex;flex-direction:column}
+#mod-core>h2{background:transparent;border-bottom:none;border-top:none}
+#mod-core .mbody{background:rgba(8,14,20,.62);backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);border-top:1px solid var(--rule)}
+
+/* minds */
+.mind{display:flex;align-items:center;gap:8px;height:26px;cursor:pointer;
+  border-bottom:1px solid #1a1a1d;padding-right:2px}
+.mind:last-child{border-bottom:none}
+.mind .rail{width:3px;align-self:stretch;background:#1f2b2e;transition:background 90ms linear}
+.mind[data-m=odin] .rail{background:#123037}
+.mind[data-m=alice] .rail{background:#2a1740}
+.mind.on[data-m=odin] .rail{background:var(--odin);box-shadow:0 0 8px rgba(34,211,238,.75)}
+.mind.on[data-m=alice] .rail{background:var(--alice);box-shadow:0 0 8px rgba(168,85,247,.75)}
+.mind .nm{font:11px/1 var(--mono);letter-spacing:.1em;color:var(--t2)}
+.mind.on .nm{color:var(--t1)}
+.mind .st{margin-left:auto;font:9px/1 var(--mono);letter-spacing:.06em;color:var(--t3)}
+.mind.busy .st{color:var(--live)}
+
+/* memory */
+#membar{height:4px;background:#0e0e10;border:1px solid var(--rule2);margin:6px 0 5px}
+#membar i{display:block;height:100%;background:var(--live);width:0;transition:width 120ms linear}
+#memnames{max-height:123px;overflow:auto;margin-top:7px;padding-top:4px;
+  border-top:1px solid #1a1a1d}
+#memnames div{font:10px/1.5 var(--mono);color:var(--t2);cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 0}
+#memnames div:hover{color:var(--t1);background:#1a1a1d}
+#memnames div.on{color:var(--live)}
+
+/* council rack */
+.cseat{display:grid;grid-template-columns:8px 1fr auto;gap:7px;align-items:center;height:19px}
+.cseat .lt{width:8px;height:8px;border:1px solid #1d3547;background:#0c131b;
+  transition:background 90ms linear}
+.cseat.pending .lt{background:var(--pend);border-color:var(--pend)}
+.cseat.active .lt{background:var(--live);border-color:var(--live);
+  box-shadow:0 0 6px rgba(74,222,128,.8)}
+.cseat.done .lt{background:#1c4a2c;border-color:#2f6b41}
+.cseat.err .lt{background:var(--fault);border-color:var(--fault)}
+.cseat .nm{font:10px/1 var(--mono);color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cseat.done .nm,.cseat.active .nm{color:var(--t1);cursor:pointer}
+.cseat .ms{font:10px/1 var(--mono);color:var(--t3);font-variant-numeric:tabular-nums}
+
+/* machine */
+.mline{display:flex;justify-content:space-between;align-items:center;gap:8px;height:17px}
+/* ── live workspace: which files are being worked on, without having to ask ── */
+#workspace{flex:0 0 auto;max-height:38vh;display:flex;flex-direction:column;overflow:hidden;
+ border-top:1px solid var(--rule);background:transparent;min-height:0}
+/* #tele sits above the tree now, so it is the row that closes the canvas off */
+#tele{border-bottom:1px solid var(--rule)}
+.ws-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+ padding:12px 18px 8px;font-family:var(--mono);font-size:10px;letter-spacing:2px;
+ color:var(--t3);font-weight:600;text-transform:uppercase}
+.ws-head .n{letter-spacing:1px;font-weight:400;opacity:.72}
+.ws-tree{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:0 18px 18px;
+ font-family:var(--mono);font-size:11.5px;line-height:1.8;color:var(--t2)}
+.ws-item{cursor:pointer;white-space:nowrap;transition:color .2s var(--ease);
+ overflow:hidden;text-overflow:ellipsis}
+.ws-item:hover{color:var(--t1)}
+.ws-item.dir{color:var(--t3)}
+/* touched inside the active window — this is the whole point of the panel */
+.ws-item.active{color:var(--cy);font-weight:500}
+.ws-indent{display:inline-block;width:14px}
+.ws-n{opacity:.45;font-size:10.5px}
+/* a bound that bit must be visible: a tree that silently stops listing lies about the disk */
+.ws-cut{color:var(--t3);opacity:.75;font-style:italic;white-space:normal;line-height:1.5;
+ padding-top:8px}
+body.focus #workspace{display:none}   /* focus mode strips the column to the minds alone */
+
+
+.mline .v{font:11px/1 var(--mono);color:var(--t2);font-variant-numeric:tabular-nums}
+
+/* ── panes ───────────────────────────────────────────────────────────────── */
+#panes{flex:1;min-width:0;display:flex;position:relative}
+#stream{flex:0 0 35%;min-width:380px;display:flex;flex-direction:column;position:relative;
+  border-right:1px solid var(--rule);
+  background:rgba(0,0,0,0.1);backdrop-filter:blur(24px) contrast(1.2);
+  -webkit-backdrop-filter:blur(24px) contrast(1.2)}
+#stage{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;
+  background:transparent;backdrop-filter:none;
+  -webkit-backdrop-filter:none}
+/* a step's own body sits on its own plate so long output never reads over moving light */
+.wstep.open .wbin{background:#0a1017}
+/* ── MAP lens: the body of work as a survival timeline ─────────────────── */
+#mapview{flex:1;display:none;position:relative;min-height:0;flex-direction:column}
+body.lens-map #mapview{display:flex}
+body.lens-map #worklens{display:none}
+#mfilters{flex:0 0 30px;display:flex;align-items:center;gap:6px;padding:0 14px;
+  background:var(--panel);border-bottom:1px solid var(--rule)}
+#mfilters .rv{margin-left:auto;font:600 9px/1 var(--disp);letter-spacing:.14em;color:var(--t3)}
+#mfilters .wchip i{font-style:normal;opacity:.6;margin-left:5px}
+/* the chip carries the verdict's own colour when it is the active filter — the legend and the
+   control are one object, so there is no key to cross-reference against the plot */
+#mfilters .wchip[data-mv="pass"].on{color:var(--live);border-color:#2f6b41}
+#mfilters .wchip[data-mv="kill"].on{color:var(--fault);border-color:#6b2f2f}
+#mfilters .wchip[data-mv="correction"].on{color:var(--pend);border-color:#6b652f}
+#mfilters .wchip[data-mv="prior_art"].on{color:#cfcfcf;border-color:#5a5a5a}
+#mfilters .wchip[data-mv="open"].on{color:#999;border-color:#444}
+#mapwrap{flex:1;position:relative;min-height:0;overflow:auto}
+#mapc{display:block;width:100%;height:100%;cursor:default}
+#mapc.pick{cursor:pointer}
+#mapempty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+#mapdetail{position:absolute;top:40px;right:12px;width:306px;max-height:calc(100% - 52px);
+  overflow:auto;background:#000;border:1px solid var(--rule2);padding:10px 12px 14px;
+  display:none;z-index:3}
+#mapdetail.on{display:block}
+#mapdetail .dclose{float:right;color:var(--t3);cursor:pointer;font:11px/1 var(--mono)}
+#mapdetail .dclose:hover{color:var(--fault)}
+#mapdetail .dv{font:600 9px/1 var(--disp);letter-spacing:.16em;padding:4px 6px;
+  border:1px solid;display:inline-block}
+#mapdetail h4{font:600 13px/1.45 var(--disp);color:var(--t1);margin:9px 0 7px}
+#mapdetail .dmeta{font:10px/1.55 var(--mono);color:var(--t3);word-break:break-all}
+#mapdetail .dst{font:10px/1.6 var(--mono);color:var(--t2);margin-top:9px;
+  border-left:2px solid var(--rule2);padding-left:8px}
+#mapdetail .dsec{font:600 9px/1 var(--disp);letter-spacing:.16em;color:var(--t3);margin:12px 0 5px}
+#mapdetail a.fx{display:block;font:10px/1.55 var(--mono);color:var(--cy);cursor:pointer;
+  text-decoration:none;padding:1px 0;word-break:break-all}
+#mapdetail a.fx:hover{color:#fff;text-decoration:underline}
+#mapdetail .dtxt{font:10px/1.6 var(--mono);color:var(--t2);white-space:pre-wrap;
+  margin-top:8px;border-top:1px solid var(--rule);padding-top:8px}
+
+
+#feed{position:relative}
+#thread{background:var(--bg)}
+.phead{flex:0 0 24px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:0 12px;background:var(--raise);border-bottom:1px solid var(--rule);
+  border-top:1px solid #26272c;
+  font:600 10px/1 var(--disp);letter-spacing:.19em;text-transform:uppercase;color:var(--t3)}
+.phead>span:first-child::before{content:"";display:inline-block;width:2px;height:9px;
+  background:var(--cy);opacity:.55;margin-right:8px;vertical-align:-1px}
+.phead .rv{color:var(--t2);letter-spacing:0;font-variant-numeric:tabular-nums}
+.jump{border:1px solid var(--rule2);background:var(--panel);color:var(--t3);
+  font:9px/1 var(--mono);letter-spacing:.06em;padding:3px 6px;cursor:pointer;display:none}
+.jump.on{display:block;color:var(--live);border-color:#2f6b41}
+
+#feed{flex:1;overflow:auto;padding:16px 0 26px;display:flex;flex-direction:column}
+/* THE PROTECTED READING COLUMN. Instrument chrome goes around this, never through it.
+   820px is the measure the legibility pass settled on; density does not get to take it back. */
+#thread{max-width:820px;width:100%;margin:0 auto;padding:4px 26px 26px;flex:1 0 auto}
+.msg{margin-bottom:26px;padding-left:13px;border-left:2px solid transparent}
+.msg.odin{border-left-color:#1a4a57}
+.msg.alice{border-left-color:#3d2266}
+.msg .who{font:600 10px/1 var(--disp);letter-spacing:.2em;color:var(--t3);margin-bottom:7px}
+.msg.you .who{color:var(--t2)}
+.msg.odin .who{color:var(--odin)}
+.msg.alice .who{color:var(--alice)}
+.msg .body{font:15px/1.72 var(--sans);color:var(--t1);white-space:normal;letter-spacing:.004em}
+.msg.you .body{color:var(--t2)}
+.msg .body code.inline{font:13px/1 var(--mono);background:var(--panel);
+  border:1px solid var(--rule);padding:1px 4px}
+.msg .body pre{position:relative;background:var(--panel);border:1px solid var(--rule);
+  padding:10px 12px;margin:10px 0;overflow-x:auto}
+.msg .body pre code{font:12px/1.55 var(--mono);color:var(--t1);white-space:pre}
+.msg .body .copy{position:absolute;top:5px;right:5px;background:var(--raise);
+  border:1px solid var(--rule2);color:var(--t3);font:9px/1 var(--mono);letter-spacing:.06em;
+  padding:3px 5px;cursor:pointer}
+.msg .body .copy:hover{color:var(--t1)}
+.caret{display:inline-block;width:7px;height:14px;background:var(--live);
+  vertical-align:-2px;margin-left:2px}
+.divider{text-align:center;font:10px/1 var(--mono);letter-spacing:.14em;color:var(--t3);
+  margin:6px 0 20px;border-top:1px solid var(--rule);padding-top:8px}
+.fault{color:var(--fault)}
+.divider.stopped{color:var(--fault);border-top-color:var(--fault)}
+
+/* ── motion: every rule below is a STATE CHANGE being eased. Nothing here idles. ────── */
+@keyframes lensin{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes stepin{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:none}}
+body:not(.lens-map) #worklens{animation:lensin 200ms var(--ease)}
+body.lens-map #mapview{animation:lensin 200ms var(--ease)}
+.wstep{animation:stepin 240ms var(--ease) both}
+.workline{animation:stepin 260ms var(--ease) both}
+.jumpbtn{transition:opacity 160ms var(--ease),transform 160ms var(--ease)}
+.wchip,.tbtn,#lens button,.whead,.mind,#memnames div,.cseat{
+  transition:color 140ms var(--ease),background 140ms var(--ease),
+             border-color 140ms var(--ease),opacity 140ms var(--ease)}
+/* a panel head's rule fades out rather than stopping dead — forty hard rectangles all
+   shouting at once is what made this read as a terminal instead of an instrument */
+.mod>h2,.phead{position:relative;border-bottom:none}
+.mod>h2::after,.phead::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:linear-gradient(90deg,var(--rule2) 0%,var(--rule) 45%,transparent 100%)}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+
+/* ── THE WORK LENS ─────────────────────────────────────────────────────────
+   Two views of one live turn. CHAT is the prose; WORK is what the agent actually did.
+   Both scroll independently and both keep their own place. */
+#lens{display:flex;margin-left:auto;margin-right:12px}
+#lens button{background:var(--panel);border:1px solid var(--rule2);border-right:none;
+  color:var(--t3);font:600 9px/1 var(--disp);letter-spacing:.16em;padding:5px 11px;cursor:pointer;
+  transition:color 90ms linear,background 90ms linear}
+#lens button:last-child{border-right:1px solid var(--rule2)}
+#lens button.on{color:#04202a;background:var(--cy);border-color:var(--cy);
+  box-shadow:0 0 14px rgba(77,240,255,.45)}
+#lens-n{margin-left:6px;font-variant-numeric:tabular-nums;opacity:.75}
+#worklens{flex:1;display:flex;flex-direction:column;min-height:0}
+#wfilters{flex:0 0 30px;display:flex;align-items:center;gap:6px;padding:0 14px;
+  background:var(--panel);border-bottom:1px solid var(--rule)}
+.wchip{background:transparent;border:1px solid var(--rule2);color:var(--t3);
+  font:600 9px/1 var(--disp);letter-spacing:.14em;padding:5px 9px;cursor:pointer;
+  transition:color 90ms linear,border-color 90ms linear}
+.wchip:hover{color:var(--t1)}
+.wchip.on{color:var(--live);border-color:#2f6b41}
+#wfilters .rv{margin-left:auto;font:600 9px/1 var(--disp);letter-spacing:.14em;color:var(--t3)}
+#wlog{flex:1;overflow:auto;padding:2px 0 34px}
+.wstep{margin:0 14px;border-bottom:1px solid #16202c}
+.wstep.hide{display:none}
+.whead{display:grid;grid-template-columns:26px 52px 1fr auto auto;gap:11px;align-items:center;
+  padding:8px 8px;margin:0 -6px;cursor:pointer}
+.whead:hover{background:#111926}
+.wn{font:10px/1 var(--mono);color:var(--t3);text-align:right;font-variant-numeric:tabular-nums}
+.wk{font:600 9px/1 var(--disp);letter-spacing:.14em;color:var(--t2)}
+.wt{font:12px/1.35 var(--mono);color:#eef6ff;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;user-select:text}
+.wms{font:11px/1 var(--mono);color:var(--t2);font-variant-numeric:tabular-nums}
+.wst{font:600 9px/1 var(--disp);letter-spacing:.12em;color:var(--t3);min-width:26px;text-align:right}
+.wstep.run .wst{color:var(--live);text-shadow:0 0 10px rgba(92,245,143,.55)}
+.wstep.ok  .wst{color:#2f6b41}
+.wstep.err .wst{color:var(--fault)}
+.wstep.err .wt{color:var(--fault)}
+.wstep.sel .whead{background:#17222f}
+.wbody{display:none}
+.wstep.open .wbody{display:block;animation:bodyin 190ms var(--ease) both}
+@keyframes bodyin{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+.wbin{padding:0 0 14px 37px}
+.wsec{font:600 9px/1 var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--t3);
+  margin:10px 0 5px}
+.wpre{font:11px/1.55 var(--mono);color:var(--t1);white-space:pre;overflow-x:auto;
+  background:#0d141d;border:1px solid var(--rule);padding:8px 10px}
+.wpath{font:11px/1.5 var(--mono);color:var(--cy);word-break:break-all;user-select:text}
+.jumpbtn{position:absolute;right:20px;bottom:18px;z-index:6;display:none;
+  background:var(--raise);border:1px solid #2f6b41;border-top-color:var(--edge);color:var(--live);
+  font:600 9px/1 var(--disp);letter-spacing:.16em;padding:9px 13px;cursor:pointer}
+#jump.on{display:block}
+body:not(.lens-map) #wjump.on{display:block}
+/* one line in the conversation standing in for a whole block of work */
+.workline{display:flex;align-items:center;gap:10px;margin:0 0 24px 13px;padding:8px 12px;
+  border:1px solid var(--rule2);border-left:2px solid var(--cy);background:var(--panel);
+  cursor:pointer;font:11px/1 var(--mono);color:var(--t2);
+  transition:background 90ms linear,color 90ms linear}
+.workline:hover{background:var(--raise);color:var(--t1)}
+.workline .wl-k{font:600 9px/1 var(--disp);letter-spacing:.16em;color:var(--cy)}
+.workline .wl-n{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--t3)}
+.workline.err{border-left-color:var(--fault)}
+.workline.err .wl-k{color:var(--fault)}
+
+#profile{flex:0 0 29px;display:flex;align-items:center;gap:11px;padding:0 12px;
+  background:var(--raise);border-bottom:1px solid var(--rule)}
+.ptrack{position:relative;flex:1;height:13px;background:#0a1017;border:1px solid #202024}
+.ptrack i{position:absolute;top:0;bottom:0;min-width:1px;background:#2f6b41;cursor:pointer;
+  transition:background 90ms linear}
+.ptrack i.run{background:var(--live);box-shadow:0 0 8px rgba(74,222,128,.6)}
+.ptrack i.err{background:var(--fault)}
+.ptrack i:hover{background:var(--t1)}
+.ptrack .idle{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font:600 8px/1 var(--mono);letter-spacing:.14em;color:#3a3b42}
+/* kept from the removed right column: the work lens still uses these */
+.empty{padding:16px 16px;font:11px/1.65 var(--mono);color:var(--t3);max-width:640px}
+.elide{color:var(--pend)}
+.wpre .del{color:#f89a9a;display:block}
+.wpre .add{color:#86efac;display:block}
+.wpre .hunkgap{display:block;height:9px}
+.wstep.note .whead{cursor:default}
+.wstep.note .wt{color:var(--t2)}
+.wstep.note.err .wt{color:var(--fault)}
+
+/* ── FOCUS mode: the instrument stands down and the reading column is all that is left,
+      with one small readout so you can still see the machine working ─────────────────── */
+body.focus #drawer,body.focus #stage{display:none}
+body.focus #stream{flex:1 1 auto;border-right:none}
+body.focus #stream .phead{opacity:.4}
+#activity{position:fixed;left:22px;bottom:74px;z-index:40;max-width:min(38vw,380px);
+  pointer-events:none;font:11px/1.55 var(--mono);color:var(--t2);
+  opacity:0;transition:opacity 160ms linear}
+body.focus #activity.on{opacity:1}
+#activity .st{font:600 9px/1 var(--disp);letter-spacing:.19em;text-transform:uppercase;
+  color:var(--live);margin-bottom:7px}
+#activity .ln{margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#activity .ln .d{display:inline-block;width:14px}
+#activity .ln.run .d{color:var(--live)}
+#activity .ln.ok  .d{color:#2f6b41}
+#activity .ln.err .d{color:var(--fault)}
+#activity .ln.err{color:var(--fault)}
+#activity .ms{color:var(--t3);font-variant-numeric:tabular-nums}
+
+/* ── transport ───────────────────────────────────────────────────────────── */
+#transport{flex:0 0 var(--foot);display:flex;align-items:center;gap:8px;padding:0 12px;
+  background:var(--panel);border-top:1px solid var(--edge)}
+#modechip{font:600 10px/1 var(--disp);letter-spacing:.2em;color:var(--odin);
+  border:1px solid var(--rule2);border-top-color:var(--edge);
+  padding:9px 10px;cursor:pointer;user-select:none}
+body.alice #modechip{color:var(--alice)}
+#inp{flex:1;min-width:0;height:34px;background:#0c0c0f;border:1px solid var(--rule2);
+  color:var(--t1);font:300 14px/1 var(--mono);padding:0 12px;outline:none}
+#inp:focus{border-color:#4a4a52}
+#inp::placeholder{color:var(--t3)}
+.tgroup{display:flex;flex-direction:column;gap:5px;padding:0 11px;align-self:stretch;
+  justify-content:center;border-left:1px solid var(--rule)}
+.tgroup .lab{padding-left:1px}
+.trow{display:flex;gap:6px}
+.tbtn{height:34px;padding:0 15px;background:var(--raise);border:1px solid var(--rule2);
+  border-top-color:var(--edge);color:var(--t2);
+  font:600 10px/1 var(--disp);letter-spacing:.19em;cursor:pointer;
+  transition:color 90ms linear,border-color 90ms linear,background 90ms linear}
+.tbtn:hover{background:#1f2024}
+.tbtn:hover{color:var(--t1);border-color:#4a4a52}
+.tbtn.rec{color:var(--fault);border-color:var(--fault)}
+.tbtn.on{color:var(--live);border-color:#2f6b41}
+.tbtn[disabled]{opacity:.4;cursor:default}
+
+/* above the strip breakpoint the fact list takes the rail's spare height, so the modules
+   reach the bottom of the panel instead of floating in a void */
+@media(min-width:801px){
+  #mod-mem{flex:1 1 auto;min-height:190px;display:flex;flex-direction:column}
+  #mod-mem .mbody{flex:1;display:flex;flex-direction:column;min-height:0}
+  #memnames{flex:1;max-height:none;min-height:0}
+}
+
+/* ═══ BLUEPRINT — the body of work as an inspectable timeline ═══ */
+#bp{position:fixed;inset:0;z-index:60;display:none;flex-direction:column;
+ background:var(--bg);color:var(--t1)}
+#bp.on{display:flex;animation:bpin .35s cubic-bezier(.2,.7,.3,1)}
+@keyframes bpin{from{opacity:0;transform:scale(.988)}to{opacity:1;transform:none}}
+#bp-top{display:flex;align-items:center;gap:13px;padding:13px 22px 11px;flex-wrap:wrap;
+ border-bottom:1px solid var(--rule)}
+#bp-top .ttl{font-weight:700;letter-spacing:4px;font-size:13.5px;color:#eaf3ff}
+#bp-top .ttl b{color:#4be3a0}
+#bp-sub{font-family:var(--mono);font-size:10px;color:var(--t2);letter-spacing:1px}
+#bp-search{background:var(--panel);border:1px solid var(--rule);border-radius:0;
+ color:var(--t1);font-family:var(--disp);font-size:12.5px;padding:7px 13px;width:200px;transition:.2s}
+#bp-search:focus{border-color:rgba(75,227,160,.5);box-shadow:0 0 0 3px rgba(75,227,160,.1);width:270px}
+#bp-search::placeholder{color:#4a5b72}
+.bpchip{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:5px 10px;border-radius:0;
+ border:1px solid var(--rule);background:rgba(255,255,255,.02);color:#93a6bd;cursor:pointer;
+ transition:.16s cubic-bezier(.2,.7,.3,1);user-select:none;display:inline-flex;align-items:center;gap:6px}
+.bpchip:hover{border-color:rgba(255,255,255,.35);color:#fff}
+.bpchip .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.bpchip.off{opacity:.32}
+.bpchip.off .dot{background:transparent!important;box-shadow:inset 0 0 0 1.5px currentColor}
+#bp-right{margin-left:auto;display:flex;gap:8px}
+#bp-close:hover{border-color:#ff6b81;color:#ff6b81}
+#bp-main{flex:1;display:flex;min-height:0}
+#bp-body{flex:1;display:flex;overflow:auto;position:relative;cursor:grab}
+#bp-body.drag{cursor:grabbing;scroll-behavior:auto!important}
+#bp-lanes{position:sticky;left:0;z-index:3;flex:none;width:116px;
+ /* the lane column sits OVER the timeline; it fades so nodes slide under it instead of
+    being hard-clipped mid-label, which is what the original did too */
+ background:linear-gradient(90deg,var(--bg) 74%,rgba(5,8,11,0));padding-top:26px}
+.bplane{position:absolute;left:12px;font-family:var(--mono);font-size:10px;letter-spacing:1.5px;
+ cursor:pointer;transition:.16s;white-space:nowrap;display:flex;align-items:center;gap:7px}
+.bplane:hover{transform:translateX(2px)}
+.bplane .bar{width:3px;border-radius:2px;flex:none}
+.bplane .n{color:rgba(255,255,255,.3);font-size:9px}
+.bplane.dim{opacity:.28}
+#bp-plot{flex:none;position:relative}
+#bp-svg{display:block}
+.bpday{font-family:var(--mono);font-size:9px;fill:rgba(255,255,255,.34);letter-spacing:1px}
+.bpday.new{fill:#4be3a0}
+.bpgrid{stroke:rgba(255,255,255,.045)}
+.bparc{fill:none;stroke:rgba(150,190,235,.13);stroke-width:1;transition:stroke .18s,stroke-width .18s}
+.bparc.hot{stroke:#4be3a0;stroke-width:1.9;filter:drop-shadow(0 0 4px rgba(75,227,160,.5))}
+.bparc.hotback{stroke:#7bd8ff;stroke-width:1.9;filter:drop-shadow(0 0 4px rgba(123,216,255,.45))}
+.bpn{cursor:pointer;transition:opacity .18s}
+.bpn .hitb{fill:transparent}
+.bpn .gl{transition:transform .18s cubic-bezier(.2,.7,.3,1)}
+.bpn:hover .gl{transform:scale(1.5)}
+.bpn.faded{opacity:.1;pointer-events:none}
+.bpn .ring{fill:none;stroke:#fff;stroke-width:1.5;opacity:0}
+.bpn.sel .ring{stroke:#fff;stroke-width:2;opacity:1}
+.bpn.rel .ring{stroke:#4be3a0;opacity:.9}
+.bplabel{font-family:var(--mono);font-size:9px;fill:rgba(215,232,250,.5);pointer-events:none}
+.bpn.sel .bplabel,.bpn:hover .bplabel{fill:#fff}
+#bp-tip{position:fixed;z-index:9;pointer-events:none;display:none;max-width:330px;
+ background:rgba(6,10,17,.97);border:1px solid var(--rule);border-left:2px solid #4be3a0;
+ border-radius:0;padding:9px 12px;box-shadow:none}
+#bp-tip.on{display:block}
+#bp-tip .tt{font-size:12.5px;color:#eaf3ff;line-height:1.4;font-weight:600;margin-bottom:4px}
+#bp-tip .tm{font-family:var(--mono);font-size:9px;color:var(--t2);letter-spacing:1px}
+#bp-detail{flex:none;width:0;overflow:hidden;transition:width .3s cubic-bezier(.2,.7,.3,1);
+ border-left:1px solid var(--rule);background:rgba(6,10,17,.62)}
+#bp-detail.on{width:min(35vw,415px)}
+.bpd-in{width:min(35vw,415px);padding:18px 20px;height:100%;overflow-y:auto}
+.bpd-badge{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:2px;
+ padding:3px 9px;border-radius:0;margin-bottom:9px}
+.bpd-t{color:#eaf3ff;font-size:15px;font-weight:600;line-height:1.4;margin-bottom:6px}
+.bpd-meta{font-family:var(--mono);font-size:9.5px;color:var(--t2);line-height:1.8;margin-bottom:12px}
+.bpd-meta b{color:#93a6bd;font-weight:400}
+.bpd-warn{font-family:var(--mono);font-size:9.5px;color:#f0883e;background:rgba(240,136,62,.08);
+ border:1px solid rgba(240,136,62,.26);border-radius:0;padding:7px 9px;line-height:1.5;margin-bottom:12px}
+.bpd-sec{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3);
+ margin:14px 0 6px;text-transform:uppercase}
+.bpd-status{font-size:12px;color:#cfe0f2;line-height:1.55;background:rgba(255,255,255,.035);
+ border-left:2px solid rgba(255,255,255,.16);padding:8px 11px;border-radius:0}
+.bpd-b{font-size:12px;color:#a3b9d1;line-height:1.6}
+.bpd-link{display:block;font-family:var(--mono);font-size:10.5px;color:#93a6bd;padding:5px 8px;
+ border-radius:0;cursor:pointer;transition:.14s;border-left:2px solid transparent;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bpd-link:hover{background:rgba(75,227,160,.09);color:#4be3a0;border-left-color:#4be3a0}
+.bpd-none{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.22);padding:3px 8px}
+
+
+/* v4 chrome for the blueprint's own header — the lifted rules above assumed v3's shell */
+#bp-top{background:var(--panel);border-top:1px solid var(--edge)}
+#bp-top .ttl{font:600 13px/1 var(--disp);letter-spacing:.26em}
+#bp-sub{font:600 9px/1 var(--disp);letter-spacing:.19em;text-transform:uppercase}
+#bp-search{border-radius:0;font:300 13px/1 var(--mono)}
+#bp-search:focus{border-color:var(--rule2);box-shadow:none}
+.bpchip{font:600 9px/1 var(--disp);letter-spacing:.14em;border-radius:0}
+#bp .hbtn{height:28px;padding:0 12px;background:var(--raise);border:1px solid var(--rule2);
+  border-top-color:var(--edge);color:var(--t2);font:600 10px/1 var(--disp);letter-spacing:.19em;
+  cursor:pointer}
+#bp .hbtn:hover{color:var(--t1);background:#1f2b33}
+#bp-close:hover{border-color:var(--fault);color:var(--fault)}
+
+/* ── the compact strip: below 800px the rail is demoted, never deleted ───── */
+@media(max-width:1200px){
+  .hide-md{display:none}
+  #stream{flex:0 0 42%;min-width:320px}
+  #meters .hcell{min-width:74px;padding:0 9px}
+  #meters .hcell:last-child{padding-right:12px}
+  .hcell{min-width:84px;padding:0 11px}
+  .big{font-size:15px}
+  .spark{width:68px}
+  /* eight buttons in four groups do not fit between 800 and 1200 at full size, and the
+     message box is what gets crushed. It is the primary control; give it a floor. */
+  .tbtn{padding:0 9px;letter-spacing:.12em}
+  .tgroup{padding:0 7px}
+  #inp{min-width:180px}
+}
+@media(max-width:800px){
+  /* below 800 the Stage stacks under the Stream rather than squeezing beside it, and the
+     drawer stays a drawer — it was already off-canvas, so nothing has to become a strip */
+  #panes{flex-direction:column}
+  #stream{flex:1 1 55%;min-width:0;border-right:none;border-bottom:1px solid var(--rule)}
+  #stage{flex:1 1 45%;min-width:0}
+  #drawer{position:absolute;top:0;bottom:0;width:88vw;max-width:var(--rail);
+    margin-left:calc(-1 * 88vw)}
+  body:not(.rail-hidden) #drawer{margin-left:0}
+  .mod{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(10,17,24,.94)}
+  .mod{border-bottom:none;border-right:1px solid var(--rule);display:flex;align-items:center;
+    flex:0 0 auto;padding:0 9px;gap:8px}
+  .mod>h2{height:auto;background:none;border:none;padding:0;flex-direction:column;
+    align-items:flex-start;gap:3px}
+  .mod>h2::before{display:none}
+  .mod>h2 .rv{font-size:9px}
+  .mbody{padding:0}
+  .spark{display:none}
+  #brand b{font-size:16px;letter-spacing:.22em}
+  #mtx{grid-template-columns:repeat(7,7px);gap:2px}
+  #mtx .ch,#mtx .rh{display:none}
+  #mtx .cw{height:7px}
+  .xp{width:7px;height:7px}
+  #mtxlegend{display:none}
+  .mind{height:16px;gap:5px}
+  .mind .nm{font-size:9px}
+  .mind .st{font-size:8px;margin-left:5px}
+  .mod{align-items:center}
+  #membar{width:84px;margin:0}
+  #mem-sub,#memnames{display:none}
+  #profile{flex:0 0 24px}
+  #mod-machine .mbody{display:flex;gap:9px}
+  .mline{height:auto;gap:4px}
+  .cseats{display:flex;gap:3px}
+  .cseat{display:block;height:auto}
+  .cseat .nm,.cseat .ms{display:none}
+  #brand .sub{display:none}
+  .hcell.hide-sm{display:none}
+  .tbtn{padding:0 8px;letter-spacing:.1em}
+  #inp{min-width:150px}
+  #transport{gap:0;padding:0 6px}
+  .tgroup{padding:0 5px;gap:3px}
+  .tgroup .lab{font-size:8px;letter-spacing:.12em}
+  /* the message box is the primary control; the mode chip keeps only its identity dot, which
+     the placeholder and the CORE module both already spell out in words */
+  #modechip{padding:9px 7px;font-size:0}
+  #modechip::first-letter{font-size:13px}
+}
+</style>
+</head>
+<body>
+<div id="bootline"></div>
+<div id="activity"></div>
+<div id="shell">
+
+<header id="head">
+  <div id="brand"><b>HELIX</b><span class="sub">WORKBENCH</span><span id="vtag">HELIX</span></div>
+  <div class="hcell"><span class="lab">Session</span><span class="big" id="h-session">—</span></div>
+  <div class="hcell hide-md"><span class="lab">Uptime</span><span class="big" id="h-uptime">—</span></div>
+  <div class="hcell"><span class="lab">Sign-in</span><span class="big" id="h-signin">—</span></div>
+  <div class="hcell hide-md"><span class="lab">State</span><span class="big" id="h-state">IDLE</span></div>
+  <div id="meters">
+    <div class="hcell budget"><span class="lab">Tokens · session</span>
+      <div class="brow"><span class="bn odin">ODIN</span><span class="bv" id="tel-odin">0 / 0</span></div>
+      <div class="brow"><span class="bn alice">ALICE</span><span class="bv" id="tel-alice">0 / 0</span></div>
+      <div class="bsplit" title="share of the session's tokens"><i id="tel-bar"></i></div>
+    </div>
+    
+    <div class="hcell"><span class="lab">Turn</span><span class="big num" id="m-turn">—</span></div>
+    <div class="hcell wide"><span class="lab">CPU · last 40 s</span>
+      <div class="hstack"><span class="big num" id="m-cpu">—</span>
+        <div class="spark" id="spark-cpu"></div></div></div>
+    <div class="hcell"><span class="lab">TTS queue</span><span class="big num" id="m-tts">—</span>
+      <div class="mtrack"><i class="mb" id="bar-tts"></i></div></div>
+  </div>
+</header>
+
+<div id="main">
+
+  <aside id="drawer">
+    <div id="drawer-tab" title="Instrument — hover or press Tab"><span></span></div>
+    <div id="railpanels">
+    <section class="mod" id="mod-core">
+      <h2>Core<span class="rv" id="minds-rv">ODIN</span></h2>
+
+      <canvas id="ent"></canvas>
+      <div class="mbody" style="padding:0 10px 4px">
+        <div class="mind on" data-m="odin" onclick="setMode('odin')">
+          <i class="rail"></i><span class="nm">ODIN</span><span class="st" id="st-odin">IDLE</span></div>
+        <div class="mind" data-m="alice" onclick="setMode('alice')">
+          <i class="rail"></i><span class="nm">ALICE</span><span class="st" id="st-alice">IDLE</span></div>
+      </div>
+    </section>
+
+    <section class="mod" id="mod-mtx">
+      <h2>Routing matrix<span class="rv" id="mtx-rv">idle</span></h2>
+      <div class="mbody">
+        <div id="mtx"></div>
+      </div>
+    </section>
+
+
+
+    <section class="mod" id="mod-council">
+      <h2>Council<span class="rv" id="council-rv">—</span></h2>
+      <div class="mbody"><div class="cseats" id="cseats"></div></div>
+    </section>
+    <section class="mod" id="mod-machine">
+      <h2>Machine<span class="rv" id="mach-rv">—</span></h2>
+      <div class="mbody">
+        <div class="mline"><span class="lab">Uptime</span><span class="v" id="mach-up">—</span></div>
+        <div class="mline"><span class="lab">Resident</span><span class="v" id="mach-rss">—</span></div>
+        <div class="mline"><span class="lab">TTS cache</span><span class="v" id="mach-tts">—</span></div>
+        <div class="mline"><span class="lab">Facts on disk</span><span class="v" id="mach-facts">—</span></div>
+        <div class="mline"><span class="lab">Turn lock</span><span class="v" id="mach-lock">—</span></div>
+      </div>
+    </section>
+    </div>
+  </aside>
+
+  <div id="panes">
+
+    <section id="stream">
+      <div class="phead"><span id="lenshead">Conversation</span>
+        <span class="rv" id="conv-rv">—</span></div>
+      <div id="feed"><div id="thread"></div></div>
+      <button class="jumpbtn" id="jump" onclick="toBottom()">↓ JUMP TO LATEST</button>
+    </section>
+    <section id="stage">
+      <div class="phead">
+        <span id="stagehead">Work</span>
+        <div id="lens">
+          <button id="lens-work" class="on" onclick="setLens('work',true)">WORK<span id="lens-n"></span></button>
+          <button id="lens-map" onclick="setLens('map',true)">MAP</button>
+        </div>
+      </div>
+      <div id="worklens">
+        <div id="wfilters">
+          <button class="wchip on" id="wf-all"  onclick="wFilter('all')">ALL</button>
+          <button class="wchip"    id="wf-edit" onclick="wFilter('edit')">EDITS</button>
+          <button class="wchip"    id="wf-cmd"  onclick="wFilter('cmd')">COMMANDS</button>
+          <span class="rv" id="wcount">no steps yet</span>
+        </div>
+        <div id="profile"><span class="lab">Turn profile</span>
+          <div class="ptrack" id="ptrack"><span class="idle">NO TURN YET</span></div></div>
+        <div id="wlog"><div class="empty" id="work-empty">Nothing has run yet. Every command,
+          file write and lookup appears here in order, with its real output.</div></div>
+      </div>
+      <div id="mapview">
+        <div id="mfilters">
+          <button class="wchip on" data-mv="all">ALL</button>
+          <button class="wchip" data-mv="pass">HOLDS<i></i></button>
+          <button class="wchip" data-mv="kill">KILLED<i></i></button>
+          <button class="wchip" data-mv="correction">CORRECTED<i></i></button>
+          <button class="wchip" data-mv="prior_art">PRIOR ART<i></i></button>
+          <button class="wchip" data-mv="open">UNSTATED<i></i></button>
+          <button class="wchip" data-mv="reload" title="Re-read the fact files">⟳</button>
+          <span class="rv" id="mcount">—</span>
+        </div>
+        <div id="mapwrap">
+          <canvas id="mapc"></canvas>
+          <div id="mapempty" class="empty">Reading the corpus…</div>
+        </div>
+        <aside id="mapdetail"></aside>
+      </div>
+      <button class="jumpbtn" id="wjump" onclick="workBottom()">↓ JUMP TO LATEST</button>
+    </section>
+
+
+  </div>
+</div>
+
+<footer id="transport">
+  <div id="modechip" onclick="toggleMode()">◉ ODIN</div>
+  <input id="inp" placeholder="Speak or type to ODIN…" autocomplete="off">
+  <div class="tgroup"><span class="lab">Voice</span><div class="trow">
+    <button class="tbtn" id="btn-talk" onclick="toggleMic()"
+      title="Hold a turn: press to start recording, press again to send">TALK</button>
+    <button class="tbtn" id="btn-auto" onclick="toggleAuto()"
+      title="Always listen. Say &quot;ODIN …&quot; and the rest of the sentence is sent.">AUTO</button>
+  </div></div>
+  <div class="tgroup"><span class="lab">Turn</span><div class="trow">
+    <button class="tbtn" id="btn-stop" onclick="stopTurn()"
+      title="Interrupt the turn in flight (Esc)">STOP</button>
+    <button class="tbtn" id="btn-council" onclick="runCouncil()"
+      title="Convene the bench — seven seats answer as they land">COUNCIL</button>
+  </div></div>
+  <div class="tgroup"><span class="lab">View</span><div class="trow">
+    <button class="tbtn" id="btn-focus" onclick="toggleFocus()"
+      title="Stand the instrument down and read — the conversation, and one small activity readout">FOCUS</button>
+    <button class="tbtn" id="btn-full" onclick="toggleFull()"
+      title="Fill the screen (double-click the conversation header does the same)">FULL</button>
+  </div></div>
+  <div class="tgroup"><span class="lab">Memory</span><div class="trow">
+    <button class="tbtn" id="btn-remember" onclick="remember()"
+      title="Write what is in the box (or the last answer) to memory as a fact">REMEMBER</button>
+    <button class="tbtn" id="bp-btn" onclick="toggleBlueprint()"
+      title="The body of work, mapped — every fact, its verdict, and what cites it (Ctrl+B)">BLUEPRINT</button>
+  </div></div>
+</footer>
+</div>
+
+<div id="bp">
+ <div id="bp-top">
+  <div class="ttl">BODY OF <b>WORK</b></div>
+  <div id="bp-sub">mapping…</div>
+  <input id="bp-search" placeholder="search facts…" autocomplete="off">
+  <div id="bp-filters"></div>
+  <div id="bp-right">
+   <button class="hbtn" onclick="bpGoNewest()" title="Jump to the most recent facts">⇥ NEWEST</button>
+   <button class="hbtn" id="bp-close" onclick="toggleBlueprint()">ESC ✕</button>
+  </div>
+ </div>
+ <div id="bp-main">
+  <div id="bp-body" class="scrolls">
+   <div id="bp-lanes"></div>
+   <div id="bp-plot"><svg id="bp-svg"></svg></div>
+  </div>
+  <div id="bp-detail"></div>
+ </div>
+</div>
+<div id="bp-tip"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// HELIX v4 — MTRX control surface.
+// Every lit cell, every number and every row on this screen is driven by a real
+// event off /ask_stream, /council_stream or /metrics. Nothing loops, nothing
+// breathes, nothing sweeps. If something is lit, something is genuinely running.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MROWS = ['YOU','ODIN','ALICE','COUNCIL'];
+const MCOLS = ['SDK','BASH','FILE','WEB','MEM','TTS','STT'];
+const MCOLT = {SDK:'the mind’s own model call',BASH:'shell commands',
+  FILE:'read / write / edit / glob / grep',WEB:'web search + fetch',
+  MEM:'memory facts entering context',TTS:'speech synthesis',STT:'microphone → text'};
+const SEATS = ['Sol','DeepSeek-V4','Qwen3.8-Max','Kimi-K3','MiniMax-M3','GLM-5.3','Gemini'];
+
+// One state object. The DOM is a projection of it; the tests drive it directly.
+const S = {
+  mode:'odin',
+  mtx:{},                 // "ROW/COL" -> idle|pending|active|used|err
+  calls:new Map(),        // tool_use_id -> call record
+  order:[],               // ids, oldest first
+  sel:null,               // {kind:'tool',id} | {kind:'fact',name}
+  turn:{active:false,t0:0,ms:null,usage:null,stepIds:[],lineEl:null},
+  lensManual:false,       // true once you have picked a view yourself
+  lensManualIdle:false,   // …and you picked it while nothing was running, so it sticks
+  wfilter:'all',          // all | edit | cmd
+  cpu:[],                 // rolling /metrics CPU samples — measured, never synthesised
+  tokens:{odin:{in:0,out:0},alice:{in:0,out:0}},   // accumulated for this session, per mind
+  council:{},             // seat -> {state,t0,ms,text,role}
+  metrics:{},
+  mem:null
+};
+// Streaming repaint context. One repaint per animation frame, never one per token.
+const ST = {raw:'',painted:'',rafId:0,msg:null};
+const CARET = '<span class="caret"></span>';
+const MTXEL = {}, MTXRH = {}, MTXCH = {};
+const SPARK_N = 40;                       // 40 one-second samples of measured process CPU
+let feed,thread,ledger,inp,MODE='odin',pinned=true,wpinned=true;
+let _abort=null,_aq=[],_aplay=false,_acur=null,recording=false,micBusy=false;
+let _councilAbort=null;
+
+const $ = id => document.getElementById(id);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ODIN and ALICE — lifted from static/index.html. What a mind is DOING changes
+// how it moves; its hue is fixed identity. Every input below is a real signal:
+// which mind holds the turn, its state, the RMS envelope of the clip it is
+// actually speaking, its tool calls, and measured CPU.
+// ═══════════════════════════════════════════════════════════════════════════
+// ============ the two minds, rendered as particle bodies ============
+const cv=document.getElementById('ent'),g=cv.getContext('2d');
+let W=0,H=0,RAD=0,STRIP=false;
+function resize(){const r=cv.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);
+ // measure the canvas's OWN box, never its parent's: a parent whose height comes from its
+ // children plus a canvas that sizes from its parent is a loop, and it hangs the renderer.
+ // CSS owns the layout size now; this only sets the backing store.
+ W=cv.width=Math.max(240,(r.width*dpr)|0);H=cv.height=Math.max(80,(r.height*dpr)|0);
+ // a short wide strip is a different room: the seats sit beside each other, not stacked
+ STRIP=(r.width/Math.max(1,r.height))>1.1;   // a rail-shaped box still pairs side by side
+ RAD=(STRIP?Math.min(r.width*0.18,r.height*0.32):Math.min(r.width*0.40,r.height*0.24))*dpr;}
+addEventListener('resize',resize);
+// track the container directly — fonts landing, focus mode, and window changes all move it
+if(window.ResizeObserver)new ResizeObserver(resize).observe(cv);
+// particles: churning inner CORE + rigid outer SHELL
+const CORE_N=1900,SHELL_N=560,N=CORE_N+SHELL_N;  // full-bleed canvas, see build_v6_glass
+const PX=new Float32Array(N),PY=new Float32Array(N),PZ=new Float32Array(N),PH=new Float32Array(N),
+      SP=new Float32Array(N),shell=new Uint8Array(N);
+function seed(off,count,sf){for(let i=0;i<count;i++){const idx=off+i,y=1-(i/(count-1))*2,
+ rr=Math.sqrt(Math.max(0,1-y*y)),th=i*2.399963;
+ PX[idx]=Math.cos(th)*rr;PY[idx]=y;PZ[idx]=Math.sin(th)*rr;PH[idx]=Math.random()*6.283;
+ SP[idx]=0.6+Math.random()*0.9;shell[idx]=sf;}}
+seed(0,CORE_N,0);seed(CORE_N,SHELL_N,1);
+const NB=[];   // 2 nearest shell neighbours → constellation struts
+for(let i=CORE_N;i<N;i++){let b1=-1,b2=-1,d1=9,d2=9;
+ for(let j=CORE_N;j<N;j++){if(j===i)continue;const dx=PX[i]-PX[j],dy=PY[i]-PY[j],dz=PZ[i]-PZ[j],
+  d=dx*dx+dy*dy+dz*dz;
+  if(d<d1){d2=d1;b2=b1;d1=d;b1=j;}else if(d<d2){d2=d;b2=j;}}NB.push([i,b1,b2]);}
+const SX=new Float32Array(N),SY=new Float32Array(N);
+function h3(x,y,z){let n=(x*374761393+y*668265263+z*1274126177)|0;n=(n^(n>>13))*1274126177|0;
+ n=n^(n>>16);return (n&65535)/32768-1;}
+function vn(x,y,z){const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z),fx=x-ix,fy=y-iy,fz=z-iz,
+ u=fx*fx*(3-2*fx),v=fy*fy*(3-2*fy),w=fz*fz*(3-2*fz),
+ a=h3(ix,iy,iz),b=h3(ix+1,iy,iz),c=h3(ix,iy+1,iz),d=h3(ix+1,iy+1,iz),
+ e=h3(ix,iy,iz+1),f=h3(ix+1,iy,iz+1),gg=h3(ix,iy+1,iz+1),hh=h3(ix+1,iy+1,iz+1),
+ p=a+(b-a)*u,q=c+(d-c)*u,r2=e+(f-e)*u,s2=gg+(hh-gg)*u,y1=p+(q-p)*v,y2=r2+(s2-r2)*v;
+ return y1+(y2-y1)*w;}
+const sprO=document.createElement('canvas'),sprA=document.createElement('canvas');
+sprO.width=sprO.height=sprA.width=sprA.height=32;
+function tint(cvv,hue){const c=cvv.getContext('2d');c.clearRect(0,0,32,32);
+ const gr=c.createRadialGradient(16,16,0,16,16,16);
+ gr.addColorStop(0,`hsla(${hue},95%,76%,1)`);gr.addColorStop(.25,`hsla(${hue},95%,62%,.5)`);
+ gr.addColorStop(1,`hsla(${hue},95%,55%,0)`);c.fillStyle=gr;c.fillRect(0,0,32,32);}
+const HUE_O=180,HUE_A=300;   // pure cyan / pure magenta phosphor
+tint(sprO,HUE_O);tint(sprA,HUE_A);
+// state changes how a mind MOVES; hue is its fixed identity
+const ENTST={idle:     {t:0.10,s:0.0016,g:0.55,core:1.00,rim:1.0,inR:0.80},
+          listening:{t:0.16,s:0.0011,g:0.85,core:0.90,rim:1.5,inR:0.70},
+          thinking: {t:0.80,s:0.0060,g:0.75,core:0.30,rim:2.6,inR:0.52},
+          speaking: {t:0.32,s:0.0024,g:0.95,core:1.25,rim:1.3,inR:0.86}};
+function mkEnt(hue,a2,spr){const cur={},vel={};for(const k in ENTST.idle){cur[k]=ENTST.idle[k];vel[k]=0;}
+ return {hue,a2,spr,cur,vel,rot:1.7,arcs:[]};}
+const ENT={odin:mkEnt(HUE_O,203,sprO),alice:mkEnt(HUE_A,298,sprA)};ENT.alice.rot=4.1;
+function spawnArc(list){(list||ENT[MODE].arcs).push(
+ {a:CORE_N+(Math.random()*SHELL_N|0),b:CORE_N+(Math.random()*SHELL_N|0),life:8,sd:Math.random()*99});}
+let state='idle',amp=0,ampT=0,glitch=0,simT=0,lastT=0,dtnG=1;
+const BED_GAIN=1.05;  // glass decoupled: ~85% now survives, so the compensation is retired
+let swap=0,swapT=0;   // MODE is declared once, in v4's state block above. swap 0 = ODIN holds the floor
+let cpuPct=0,mxD=-1,myD=-1,tetherPulses=[],lastTether=0,pulseFromOdin=true;
+// v4 names its mind states for the reader; the engine names them for how a mind MOVES.
+const ENT_STATE={IDLE:'idle',LISTENING:'listening',THINKING:'thinking',
+                 TOOLING:'thinking',RESPONDING:'speaking',SPEAKING:'speaking'};
+function setEntState(v4state){state=ENT_STATE[v4state]||'idle';return state;}
+function hsl(h,l,a){return `hsla(${h},95%,${l}%,${a})`;}
+function tetherPulse(odin){tetherPulses.push({t:0,odin:odin});}
+// ---- one mind ----
+function drawCore(E,cx,cy,R,act,hover){
+ const cur=E.cur,ca=Math.cos(E.rot),sa=Math.sin(E.rot),
+  tl=Math.sin(simT*0.25+(E===ENT.alice?1.6:0))*0.32,ct=Math.cos(tl),stl=Math.sin(tl);
+ const a=act?amp:0,sc=1.3,nt=simT*0.3,psz=R*0.016,gB=hover?1.3:1,rB=hover?1.4:1;
+ for(let i=0;i<N;i++){const isS=shell[i],bx=PX[i],by=PY[i],bz=PZ[i];
+  const nX=vn(bx*sc,by*sc,bz*sc+nt),nY=vn(bx*sc+31.4,by*sc,bz*sc+nt),nZ=vn(bx*sc,by*sc-12.5,bz*sc+nt);
+  const fl=cur.t*(isS?0.10:0.9);
+  let dx=bx+(by*nZ-bz*nY)*fl,dy=by+(bz*nX-bx*nZ)*fl,dz=bz+(bx*nY-by*nX)*fl;
+  const il=1/Math.hypot(dx,dy,dz);dx*=il;dy*=il;dz*=il;
+  let x=dx*ca-dz*sa,z=dx*sa+dz*ca,y=dy,y2=y*ct-z*stl,z2=y*stl+z*ct;
+  const rr=(isS?1.08:cur.inR/0.8)*(1+a*0.3*Math.sin(simT*6+PH[i])+glitch*1.1*Math.sin(PH[i]*12+simT*18));
+  const persp=1/(1-z2*0.42),dzz=(z2+1)/2,rim=Math.pow(1-Math.abs(z2),4)*cur.rim*rB;
+  const sx=cx+x*R*rr*persp,sy=cy+y2*R*rr*persp;SX[i]=sx;SY[i]=sy;
+  g.globalAlpha=Math.min(1,((0.12+0.6*dzz)*cur.g*gB+rim*0.45)*BED_GAIN);
+  const s=(isS?0.85:(0.45+0.9*dzz))*psz;
+  g.drawImage(E.spr,sx-s,sy-s,s*2,s*2);}
+ g.globalAlpha=1;
+ g.lineWidth=Math.max(0.5,R*0.0016);g.strokeStyle=hsl(E.a2,60,0.42);g.beginPath();
+ for(let k=0;k<NB.length;k++){const q=NB[k],i=q[0];
+  if(q[1]>=0){g.moveTo(SX[i],SY[i]);g.lineTo(SX[q[1]],SY[q[1]]);}
+  if(q[2]>=0){g.moveTo(SX[i],SY[i]);g.lineTo(SX[q[2]],SY[q[2]]);}}
+ g.stroke();
+ for(let k=E.arcs.length-1;k>=0;k--){const ar=E.arcs[k];ar.life-=dtnG;
+  if(ar.life<=0){E.arcs.splice(k,1);continue;}
+  const ax=SX[ar.a],ay=SY[ar.a],bxx=SX[ar.b],byy=SY[ar.b];
+  g.strokeStyle=`rgba(210,242,255,${Math.max(0,ar.life)/9})`;g.lineWidth=1.6;
+  g.beginPath();g.moveTo(ax,ay);
+  for(let s=1;s<5;s++){const f=s/5;
+   g.lineTo(ax+(bxx-ax)*f+Math.sin(ar.sd+s*3)*11,ay+(byy-ay)*f+Math.cos(ar.sd+s*2)*11);}
+  g.lineTo(bxx,byy);g.stroke();}
+ const crR=R*0.42*(1+a*0.4),cAl=Math.min(1,(0.5+a*0.4)*cur.core*(hover?1.3:1)*BED_GAIN);
+ const cg=g.createRadialGradient(cx,cy,0,cx,cy,crR);
+ // a white-hot centre: the only thing on screen that truly burns, and the focal point the
+ // composition was missing. The hue survives as the halo around it.
+ cg.addColorStop(0,`rgba(255,255,255,${Math.min(1,cAl*1.25)})`);
+ cg.addColorStop(0.18,hsl(E.hue,92,cAl*0.95));
+ cg.addColorStop(0.5,hsl(E.hue,60,0.16*cur.core));
+ cg.addColorStop(1,hsl(E.hue,60,0));
+ g.fillStyle=cg;g.beginPath();g.arc(cx,cy,crR,0,6.283);g.fill();
+ // name + state, sized to how much floor this mind currently holds
+ g.textAlign='center';
+ g.globalAlpha=act?0.95:0.45;g.fillStyle=hsl(E.hue,85,act?0.9:0.55);
+ g.font='600 '+Math.round(Math.max(9,R*0.115))+"px 'IBM Plex Sans Condensed',sans-serif";
+ g.fillText(E===ENT.odin?'ODIN':'ALICE',cx,cy+R*1.30);
+ if(act){g.globalAlpha=0.55;g.font='400 '+Math.round(Math.max(8,R*0.08))+"px 'IBM Plex Sans Condensed',sans-serif";
+  g.fillStyle=hsl(E.hue,45,0.62);g.fillText(state.toUpperCase(),cx,cy+R*1.22+Math.round(R*0.15));}
+ g.textAlign='left';g.globalAlpha=1;
+}
+let HIT={ox:-1,oy:-1,or:0,ax:-1,ay:-1,ar:0};   // live hit-boxes, per mind
+function frame(t){
+ const dt=Math.min(0.05,(t-lastT)/1000||0.016);lastT=t;const dtn=dt*60;dtnG=dtn;simT+=dt;
+ for(const key in ENT){const E=ENT[key],tgt=ST[(key===MODE)?state:'idle'];
+  for(const k in tgt){const f=(tgt[k]-E.cur[k])*0.15;E.vel[k]=(E.vel[k]+f)*0.75;E.cur[k]+=E.vel[k];}
+  E.rot+=(E.cur.s+((key===MODE)?amp:0)*0.004)*dtn*(key==='alice'?-1:1);}
+ amp+=(ampT-amp)*Math.min(1,0.28*dtn);glitch*=Math.pow(0.9,dtn);
+ if(amp>0.78&&Math.random()<0.14*dtn)spawnArc();
+ // the seats no longer trade size or place — which mind holds the turn is carried by its own
+ // brightness and label, so the pair stays symmetrical
+ swapT=0;swap+=(swapT-swap)*Math.min(1,0.09*dtn);
+ if(bpOn){requestAnimationFrame(frame);return;}          // the blueprint owns the screen
+ g.clearRect(0,0,W,H);g.globalCompositeOperation='lighter';
+ // Two seats. The mind you address holds seat A; the other waits in seat B.
+ // In the column they stack; in focus the dormant one steps aside so it can't crowd the name.
+ const foc=document.body.classList.contains('focus');
+ const strip=STRIP&&!foc;
+ const Ax=strip?W*0.29:W/2,        Ay=foc?H*0.44:(strip?H*0.46:H*0.29),
+       Ar=foc?Math.min(W*0.26,H*0.30):RAD;
+ const Bx=foc?W*0.87:(strip?W*0.71:W/2), By=foc?H*0.82:(strip?H*0.46:H*0.75),
+       Br=Ar*(foc?0.15:(strip?1.0:0.34));   // strip: a true mirror — same size, same axis
+ const ox=Ax+(Bx-Ax)*swap,oy=Ay+(By-Ay)*swap,orr=Ar+(Br-Ar)*swap;
+ const ax=Bx+(Ax-Bx)*swap,ay=By+(Ay-By)*swap,arr=Br+(Ar-Br)*swap;
+ // tether — the two are one system, so the link is always drawn
+ g.strokeStyle='rgba(150,190,230,.13)';g.lineWidth=Math.max(1,Ar*0.008);
+ g.beginPath();g.moveTo(ox,oy);g.lineTo(ax,ay);g.stroke();
+ if(simT-lastTether>2.4){lastTether=simT;tetherPulse(pulseFromOdin);pulseFromOdin=!pulseFromOdin;}
+ for(let k=tetherPulses.length-1;k>=0;k--){const pz=tetherPulses[k];pz.t+=dt*0.75;
+  if(pz.t>=1){tetherPulses.splice(k,1);continue;}
+  const tt=pz.odin?pz.t:1-pz.t,px=ox+(ax-ox)*tt,py=oy+(ay-oy)*tt,al=Math.sin(pz.t*Math.PI);
+  g.globalAlpha=al*0.8;g.fillStyle=hsl(pz.odin?HUE_O:HUE_A,72,0.6);
+  g.beginPath();g.arc(px,py,Ar*0.022,0,6.283);g.fill();
+  g.globalAlpha=al*0.25;g.beginPath();g.arc(px,py,Ar*0.05,0,6.283);g.fill();}
+ g.globalAlpha=1;
+ drawCore(ENT.odin,ox,oy,orr,MODE==='odin',Math.hypot(mxD-ox,myD-oy)<orr*1.15);
+ drawCore(ENT.alice,ax,ay,arr,MODE==='alice',Math.hypot(mxD-ax,myD-ay)<arr*1.15);
+ // load arc on the active mind — real CPU, nothing else
+ const AE=ENT[MODE],acx=(MODE==='odin')?ox:ax,acy=(MODE==='odin')?oy:ay,
+       acr=(MODE==='odin')?orr:arr;
+ const a0=-Math.PI*0.76,span=Math.PI*0.85,gR=acr*1.34;
+ g.beginPath();g.arc(acx,acy,gR,a0,a0+span);g.strokeStyle=hsl(AE.hue,60,0.11);
+ g.lineWidth=Math.max(1,acr*0.02);g.stroke();
+ g.beginPath();g.arc(acx,acy,gR,a0,a0+span*(cpuPct/100));g.strokeStyle=hsl(AE.hue,85,0.45);
+ g.lineWidth=Math.max(2,acr*0.026);g.stroke();
+ HIT.ox=ox;HIT.oy=oy;HIT.or=orr;HIT.ax=ax;HIT.ay=ay;HIT.ar=arr;
+ requestAnimationFrame(frame);
+}
+let CLIP=null;                 // the clip now playing, so `ampT` is a real waveform not a wobble
+function sampleAmp(){
+ if(_acur&&CLIP&&CLIP.dur>0&&CLIP.env&&CLIP.env.length){
+  const p=_acur.currentTime/CLIP.dur,
+        i=Math.min(CLIP.env.length-1,Math.max(0,(p*CLIP.env.length)|0));
+  ampT=CLIP.env[i]||0;}
+ else ampT=0;
+ requestAnimationFrame(sampleAmp);}
+
+function bindDom(){
+  feed=$('feed'); thread=$('thread'); ledger=$('wlog'); inp=$('inp');
+  feed.addEventListener('scroll',onFeedScroll);
+  ledger.addEventListener('scroll',onWorkScroll);
+}
+
+// ── markdown / escaping — lifted verbatim from the shipped index.html ───────
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function renderMD(t){t=t||'';const b=[];
+ t=t.replace(/```(\w*)\n?([\s\S]*?)```/g,(m,l,c)=>{const i=b.length;
+  b.push('<pre><button class="copy" onclick="copyCode(this)">COPY</button><code>'+
+   esc(c.replace(/\n$/,''))+'</code></pre>');return ' B'+i+' ';});
+ t=esc(t);t=t.replace(/`([^`]+)`/g,'<code class="inline">$1</code>');
+ t=t.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+ t=t.replace(/\n/g,'<br>');t=t.replace(/ B(\d+) /g,(m,i)=>b[+i]);return t;}
+function copyCode(btn){const c=btn.parentElement.querySelector('code').textContent;
+ navigator.clipboard.writeText(c).then(()=>{btn.textContent='COPIED';
+  setTimeout(()=>btn.textContent='COPY',1200);});}
+function parseSSE(fr){let ev='message',d='';
+ for(const ln of fr.split('\n')){if(ln.startsWith('event:'))ev=ln.slice(6).trim();
+  else if(ln.startsWith('data:'))d+=ln.slice(5).trim();}
+ try{return{event:ev,data:JSON.parse(d||'{}')};}catch(_){return null;}}
+// a selection you are actively making must survive the next repaint
+function selIn(n){const sel=getSelection();
+ return !!(sel&&!sel.isCollapsed&&sel.rangeCount&&n.contains(sel.anchorNode));}
+
+// ── following the live edge (both scrolling panes) ─────────────────────────
+// The feed follows only while you are already at the bottom, and offers a way back if not.
+function onFeedScroll(){
+ pinned=(feed.scrollHeight-feed.scrollTop-feed.clientHeight)<80;
+ $('jump').classList.toggle('on',!pinned);}
+function stick(){if(pinned)feed.scrollTop=feed.scrollHeight;}
+function toBottom(){
+ pinned=true;
+ if(feed.scrollTo)feed.scrollTo({top:feed.scrollHeight,behavior:'smooth'});
+ feed.scrollTop=feed.scrollHeight;          // stick() stays instant; only the jump glides
+ $('jump').classList.remove('on');}
+function onWorkScroll(){
+ wpinned=(ledger.scrollHeight-ledger.scrollTop-ledger.clientHeight)<60;
+ $('wjump').classList.toggle('on',!wpinned);}
+function workStick(){if(wpinned)ledger.scrollTop=ledger.scrollHeight;}
+function workBottom(){
+ wpinned=true;
+ if(ledger.scrollTo)ledger.scrollTo({top:ledger.scrollHeight,behavior:'smooth'});
+ ledger.scrollTop=ledger.scrollHeight;
+ $('wjump').classList.remove('on');}
+
+// ── the routing matrix ─────────────────────────────────────────────────────
+// Lifecycle, and the tests pin it exactly:
+//   tool starts        -> active   (green)
+//   result ok          -> used     (dim green: used this turn)
+//   result errored     -> err      (red: LAST use errored)
+//   turn ends          -> anything still active/pending becomes used; nothing hangs lit
+//   next turn starts   -> used and err clear back to idle
+function toolColumn(name){
+ const n=String(name||'');
+ if(/^bash$/i.test(n))return 'BASH';
+ if(/^(read|write|edit|glob|grep|notebookedit)$/i.test(n))return 'FILE';
+ if(/^(websearch|webfetch)$/i.test(n))return 'WEB';
+ return 'SDK';}
+function mtxKey(row,col){return row+'/'+col;}
+function mtxPaint(k){const e=MTXEL[k];if(!e)return;
+ const st=S.mtx[k]||'idle';e.className='xp'+(st==='idle'?'':' '+st);
+ e.title=k.replace('/',' → ')+' · '+st;}
+function mtxSet(row,col,state){
+ const k=mtxKey(row,col);
+ if(S.mtx[k]===state)return state;
+ S.mtx[k]=state;mtxPaint(k);mtxSummary();return state;}
+function mtxTurnStart(){
+ for(const k in S.mtx){if(S.mtx[k]==='used'||S.mtx[k]==='err'){S.mtx[k]='idle';mtxPaint(k);}}
+ mtxSummary();}
+function mtxTurnEnd(){
+ for(const k in S.mtx){if(S.mtx[k]==='active'||S.mtx[k]==='pending'){S.mtx[k]='used';mtxPaint(k);}}
+ mtxSummary();}
+function mtxSummary(){
+ let live=0,err=0;
+ for(const k in S.mtx){if(S.mtx[k]==='active'||S.mtx[k]==='pending')live++;else if(S.mtx[k]==='err')err++;}
+ const e=$('mtx-rv');if(!e)return;
+ e.textContent=err?(err+' fault'):(live?(live+' live'):'idle');
+ e.className='rv'+(err?' bad':'');}
+// Hovering a crosspoint dims everything off its row and column and lights both legends —
+// the affordance that makes a 28-cell grid readable, straight off a patchbay.
+function mtxHover(k){
+ const g=$('mtx');if(!g)return;
+ const r=k?k.split('/')[0]:null, c=k?k.split('/')[1]:null;
+ g.className=k?'hover':'';
+ for(const j in MTXEL){
+  const jr=j.split('/')[0], jc=j.split('/')[1];
+  MTXEL[j].classList.toggle('hl',!!k&&(jr===r||jc===c));}
+ for(const j in MTXRH)MTXRH[j].classList.toggle('lit',j===r);
+ for(const j in MTXCH)MTXCH[j].classList.toggle('lit',j===c);
+ return k;}
+function buildMatrix(){
+ const g=$('mtx');if(!g)return;g.innerHTML='';
+ const corner=document.createElement('div');corner.className='ch';corner.textContent='';
+ g.appendChild(corner);
+ for(const c of MCOLS){const h=document.createElement('div');h.className='ch';
+  h.textContent=c;h.title=c+' — '+MCOLT[c];MTXCH[c]=h;g.appendChild(h);}
+ for(const r of MROWS){
+  const rh=document.createElement('div');rh.className='rh';rh.textContent=r;
+  MTXRH[r]=rh;g.appendChild(rh);
+  for(const c of MCOLS){
+   const w=document.createElement('div');w.className='cw';
+   const x=document.createElement('div');x.className='xp';
+   const k=mtxKey(r,c);MTXEL[k]=x;S.mtx[k]='idle';x.title=r+' → '+c+' · idle';
+   w.addEventListener('mouseenter',()=>mtxHover(k));
+   w.addEventListener('mouseleave',()=>mtxHover(null));
+   w.appendChild(x);g.appendChild(w);}}
+ mtxSummary();}
+
+// ── the work stream ────────────────────────────────────────────────────────
+function hhmmss(ms){const d=new Date(ms||Date.now());
+ return d.toTimeString().slice(0,8);}
+function fmtMs(ms){if(ms===null||ms===undefined)return '—';
+ return ms>=10000?(ms/1000).toFixed(1)+'s':ms.toLocaleString()+'ms';}
+// edit = it changed a file · cmd = it ran something · look = it only read
+function wKind(name){
+ if(/^bash$/i.test(String(name)))return 'cmd';
+ if(/^(write|edit|multiedit|notebookedit)$/i.test(String(name)))return 'edit';
+ return 'look';}
+function wVisible(c){return S.wfilter==='all'||(c&&c.kind===S.wfilter);}
+function ledgerRow(call){
+ const r=document.createElement('div');r.className='wstep run';r.dataset.id=call.id;
+ r.innerHTML='<div class="whead"><span class="wn"></span><span class="wk"></span>'+
+   '<span class="wt"></span><span class="wms"></span><span class="wst"></span></div>'+
+   '<div class="wbody"></div>';
+ const h=r.querySelector('.whead');
+ if(h&&h.addEventListener)h.addEventListener('click',()=>{
+  const sel=getSelection();if(sel&&!sel.isCollapsed)return;   // let them copy a line instead
+  wToggle(call.id);});
+ return r;}
+// Everything below goes through esc()/markElision()/renderDiff(), all of which escape. Tool
+// input and output are untrusted text: HTML inside a file being edited must not reach the DOM.
+function wBody(c){
+ const out=[],inp=c.input||'';
+ let path='';
+ try{const o=JSON.parse(inp);path=o.file_path||o.path||o.notebook_path||'';}catch(e){}
+ if(path)out.push('<div class="wsec">File</div><div class="wpath">'+esc(path)+'</div>');
+ const d=inp?renderDiff(inp):null;
+ if(d)out.push('<div class="wsec">Change</div><pre class="wpre">'+d+'</pre>');
+ else if(/^bash$/i.test(String(c.name))){
+  let cmd='';try{cmd=JSON.parse(inp).command||'';}catch(e){cmd=inp;}
+  out.push('<div class="wsec">Command</div><pre class="wpre">'+esc(cmd)+'</pre>');}
+ else if(inp)out.push('<div class="wsec">Input</div><pre class="wpre">'+markElision(inp)+'</pre>');
+ const o=(c.content===null||c.content===undefined)
+   ?(c.ok===null?'(running — no output yet)':'(this call returned no content)')
+   :(c.content===''?'(empty output)':c.content);
+ out.push('<div class="wsec">Output</div><pre class="wpre">'+markElision(o)+'</pre>');
+ // one wrapper so the body is a single grid row and can animate its height open
+ return '<div class="wbin">'+out.join('')+'</div>';}
+function wToggle(id){
+ const c=S.calls.get(id);if(!c)return null;
+ c.open=!c.open;c.userToggled=true;ledgerPaint(c);return c.open;}
+function wJumpTo(id,byHand){
+ const c=S.calls.get(id);if(!c)return null;
+ S.sel={kind:'tool',id:id};
+ setLens('work',byHand);
+ c.open=true;if(byHand)c.userToggled=true;
+ if(ledger)for(const r of ledger.children)
+  if(r.classList)r.classList.toggle('sel',r.dataset&&r.dataset.id===id);
+ ledgerPaint(c);
+ if(c.el&&c.el.scrollIntoView)c.el.scrollIntoView({block:'nearest'});
+ return id;}
+/* ═══ MAP — the body of work, as a survival timeline ═════════════════════════
+   Source: /blueprint. Every field there is derived from the fact files themselves —
+   the verdict from the word in the filename or the file's own Status line, the
+   citation edges from facts that literally name another fact's filename.
+     x = the date the fact was written · lane = project · one dot = one fact ·
+     filled = a stated verdict · hollow ring = the file never stated one.
+   HONESTY RULE, and it changes what you see: /blueprint's last-resort fallback
+   GUESSES a verdict from body words, and those guesses are wrong often enough to
+   matter — a fact saying "paused until next summer" gets read as a KILL. This view refuses them.
+   confident===false ⇒ UNSTATED. The corpus is not the graveyard the guesses imply. */
+const MV={P:null,lay:null,filter:'all',proj:null,sel:null,hov:null,txt:null,
+          loaded:false,busy:false,err:''};
+const MV_V={pass:      {label:'HOLDS',    color:'#00ff00'},
+            kill:      {label:'KILLED',   color:'#ff0000'},
+            correction:{label:'CORRECTED',color:'#ffff00'},
+            prior_art: {label:'PRIOR ART',color:'#cfcfcf'},
+            open:      {label:'UNSTATED', color:'#666666'}};
+const MV_ORDER=['pass','kill','correction','prior_art','open'];
+// Project buckets come from memory/projects.json (see memory/projects.example.json).
+// The backend resolves them; anything unmatched lands in GENERAL. Add client-side
+// overrides here if you want them live on reload instead of needing a restart.
+const MV_P=[];
+function mvProject(file,proj){
+ if(proj&&proj!=='GENERAL')return proj;
+ const f=String(file||'').toLowerCase();
+ for(const p of MV_P) if(p[1].some(k=>f.indexOf(k)>=0)) return p[0];
+ return 'GENERAL';}
+function mvVerdict(n){
+ const k=(n&&n.confident&&n.verdict&&MV_V[n.verdict])?n.verdict:'open';
+ return {key:k,label:MV_V[k].label,color:MV_V[k].color,solid:k!=='open'};}
+function mvPrep(d){
+ const nodes=(d.nodes||[]).map(n=>{const v=mvVerdict(n);
+  return {file:n.file,title:n.title||n.file,date:n.date||'',status:n.status_line||'',
+          snip:n.snip||'',cites:n.cites||[],cited_by:n.cited_by||[],origin:n.origin||'local',
+          words:n.words||0,project:mvProject(n.file,n.project),
+          vk:v.key,vlabel:v.label,vcol:v.color,solid:v.solid,
+          t:Date.parse((n.date||'')+'T00:00:00Z')||0};});
+ const by={};nodes.forEach(n=>{by[n.file]=n;});
+ const cnt={};nodes.forEach(n=>{cnt[n.project]=(cnt[n.project]||0)+1;});
+ const lanes=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||a.localeCompare(b));
+ const ts=nodes.map(n=>n.t).filter(Boolean);
+ const vc={};MV_ORDER.forEach(k=>{vc[k]=nodes.filter(n=>n.vk===k).length;});
+ return {nodes:nodes,by:by,lanes:lanes,cnt:cnt,vc:vc,
+         t0:ts.length?Math.min.apply(null,ts):0,t1:ts.length?Math.max.apply(null,ts):1,
+         edges:(d.edges||[]).length};}
+// Placement. One pass, no physics: a force graph of 139 nodes is a hairball that moves every
+// time you look at it. Time on x is a fact about the corpus; a spring constant is not.
+function mvLayout(P,W,H){
+ const L=98,R=16,T=28,B=22,gap=10,MINLANE=26,PAD=10;
+ const lanes=P.lanes,n=Math.max(1,lanes.length);
+ const span=Math.max(1,P.t1-P.t0),iw=Math.max(20,W-L-R);
+ const xOf=t=>L+((t-P.t0)/span)*iw;
+ // Pass 1 — pack each lane into as many sub-rows as its DATES demand, with NO row cap.
+ // A dot hidden under another dot is a fact you cannot see or click, so density is paid for in
+ // dot size, never in lost facts. (The first version capped rows; a dense lane stacked dots and
+ // the hit test then returned the wrong fact.)
+ const packed=lanes.map(lane=>{
+  const items=P.nodes.filter(q=>q.project===lane).sort((a,b)=>a.t-b.t||(a.file<b.file?-1:1));
+  const last=[],row=[];
+  items.forEach((q,i)=>{const x=xOf(q.t);let put=last.length;
+   for(let k=0;k<last.length;k++){if(x-last[k]>=gap){put=k;break;}}
+   last[put]=x;row[i]=put;});
+  return {lane:lane,items:items,row:row,rows:Math.max(1,last.length)};});
+ // Pass 2 — lanes are NOT equal height. A lane gets the vertical space its own density needs,
+ // so one dense burst-day cannot shrink the dots in every other lane. One radius for the whole
+ // plot: a bigger dot must never look like it means more.
+ // The row pitch is FIXED. An earlier version shrank it to fit the pane, which on a short window
+ // squeezed 139 facts into 1.3px rows — unreadable and unclickable. A plot that cannot fit
+ // legibly gets a taller canvas and a scrollbar; it never gets squashed.
+ const rowH=11,r=4.5;
+ const pts=[],pos={},geom=[];
+ let top=T;
+ packed.forEach((g,li)=>{
+  const h=Math.max(MINLANE,g.rows*rowH+PAD);
+  geom.push({name:g.lane,top:top,h:h,rows:g.rows,count:g.items.length});
+  const y0=top+(h-(g.rows-1)*rowH)/2;
+  g.items.forEach((q,i)=>{const pt={n:q,x:xOf(q.t),y:y0+g.row[i]*rowH,r:r,lane:li};
+   pts.push(pt);pos[q.file]=pt;});
+  top+=h;});
+ return {L:L,R:R,T:T,B:B,r:r,rowH:rowH,W:W,H:H,bottom:top,
+         lanes:lanes,geom:geom,xOf:xOf,pts:pts,pos:pos};}
+function mvDim(n){
+ if(MV.proj&&n.project!==MV.proj)return true;
+ if(MV.filter!=='all'&&n.vk!==MV.filter)return true;
+ return false;}
+function mvHit(lay,mx,my){
+ if(!lay)return null;let best=null,bd=1e9;
+ for(const p of lay.pts){if(mvDim(p.n))continue;
+  const d=(p.x-mx)*(p.x-mx)+(p.y-my)*(p.y-my);
+  if(d<bd){bd=d;best=p;}}
+ return (best&&bd<=81)?best:null;}
+function mvMonths(t0,t1){
+ const out=[],d=new Date(t0);d.setUTCDate(1);
+ if(d.getTime()<t0)d.setUTCMonth(d.getUTCMonth()+1);
+ for(let i=0;i<48&&d.getTime()<=t1;i++){out.push(d.getTime());d.setUTCMonth(d.getUTCMonth()+1);}
+ return out;}
+const MV_MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+function mvPaint(){
+ const cv=$('mapc');if(!cv||!MV.P)return false;
+ const wrap=cv.parentNode,dpr=Math.min(2,devicePixelRatio||1);
+ const W=Math.max(80,wrap.clientWidth),pane=Math.max(60,wrap.clientHeight);
+ // row pitch is fixed, so the layout's height is a property of the corpus, not of the window.
+ const probe=mvLayout(MV.P,W,pane),need=Math.ceil(probe.bottom+probe.B);
+ const H=Math.max(pane,need);
+ cv.style.height=(H>pane)?(H+'px'):'100%';
+ if(cv.width!==W*dpr||cv.height!==H*dpr){cv.width=W*dpr;cv.height=H*dpr;}
+ const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);
+ g.clearRect(0,0,W,H);
+ const lay=MV.lay=probe;
+ const foc=MV.hov||MV.sel;
+ // time axis — month rules, drawn under everything
+ g.font='600 9px "IBM Plex Sans Condensed",Inter,sans-serif';g.textBaseline='alphabetic';
+ for(const t of mvMonths(MV.P.t0,MV.P.t1)){const x=lay.xOf(t);
+  g.strokeStyle='rgba(255,255,255,0.10)';g.beginPath();
+  g.moveTo(Math.round(x)+.5,lay.T-8);g.lineTo(Math.round(x)+.5,lay.bottom);g.stroke();
+  g.fillStyle='#666';g.textAlign='left';
+  g.fillText(MV_MON[new Date(t).getUTCMonth()],x+4,lay.T-12);}
+ // lanes
+ g.textBaseline='middle';
+ lay.geom.forEach(gm=>{
+  const mid=gm.top+gm.h/2;
+  g.strokeStyle='rgba(255,255,255,0.08)';g.beginPath();
+  g.moveTo(0,Math.round(gm.top)+.5);g.lineTo(W,Math.round(gm.top)+.5);g.stroke();
+  const on=(MV.proj===gm.name);
+  g.fillStyle=on?'#00ffff':'#aaa';g.textAlign='left';
+  g.font='600 10px "IBM Plex Sans Condensed",Inter,sans-serif';
+  g.fillText(gm.name,10,gm.h>=34?mid-5:mid);
+  if(gm.h>=34){g.fillStyle='#555';g.font='9px "IBM Plex Mono",monospace';
+   g.fillText(gm.count+' facts',10,mid+7);}});
+ g.strokeStyle='rgba(255,255,255,0.08)';g.beginPath();
+ g.moveTo(0,Math.round(lay.bottom)+.5);g.lineTo(W,Math.round(lay.bottom)+.5);g.stroke();
+ g.strokeStyle='rgba(255,255,255,0.15)';g.beginPath();
+ g.moveTo(Math.round(lay.L-14)+.5,lay.T-8);g.lineTo(Math.round(lay.L-14)+.5,lay.bottom);g.stroke();
+ // citation arcs — only for the fact under the cursor or pinned. 91 edges drawn at once is noise.
+ if(foc){
+  const me=lay.pos[foc.n.file];
+  const arc=(a,b,col)=>{if(!a||!b)return;
+   g.strokeStyle=col;g.lineWidth=1;g.beginPath();g.moveTo(a.x,a.y);
+   g.quadraticCurveTo((a.x+b.x)/2,(a.y+b.y)/2-Math.min(90,Math.abs(a.x-b.x)/2+18),b.x,b.y);
+   g.stroke();};
+  foc.n.cites.forEach(f=>arc(me,lay.pos[f],'rgba(0,255,255,0.55)'));
+  foc.n.cited_by.forEach(f=>arc(me,lay.pos[f],'rgba(255,255,255,0.34)'));}
+ // the facts
+ for(const p of lay.pts){
+  const dim=mvDim(p.n),n=p.n;
+  const isFoc=foc&&(n.file===foc.n.file);
+  const link=foc&&!isFoc&&(foc.n.cites.indexOf(n.file)>=0||foc.n.cited_by.indexOf(n.file)>=0);
+  g.globalAlpha=dim?0.10:(foc&&!isFoc&&!link?0.30:1);
+  g.beginPath();g.arc(p.x,p.y,isFoc?p.r+2:p.r,0,6.2832);
+  if(n.solid){g.fillStyle=n.vcol;g.fill();}
+  else{g.strokeStyle=n.vcol;g.lineWidth=1.4;g.stroke();}
+  if(isFoc){g.strokeStyle='#fff';g.lineWidth=1.2;g.beginPath();
+   g.arc(p.x,p.y,p.r+5,0,6.2832);g.stroke();}
+  g.globalAlpha=1;}
+ // the pinned/hovered fact's date, on the axis
+ if(foc&&foc.n.date){const x=lay.xOf(foc.n.t);
+  g.strokeStyle='rgba(255,255,255,0.30)';g.beginPath();
+  g.moveTo(Math.round(x)+.5,lay.T-8);g.lineTo(Math.round(x)+.5,lay.bottom);g.stroke();
+  g.fillStyle='#fff';g.font='9px "IBM Plex Mono",monospace';g.textAlign='left';
+  g.textBaseline='alphabetic';g.fillText(foc.n.date,Math.min(x+5,W-70),lay.bottom+13);}
+ return true;}
+
+function mvCounts(){
+ const e=$('mcount');if(!e||!MV.P)return '';
+ const shown=MV.P.nodes.filter(n=>!mvDim(n)).length;
+ const t=shown===MV.P.nodes.length
+   ?MV.P.nodes.length+' facts · '+MV.P.edges+' citations'
+   :shown+' of '+MV.P.nodes.length+' facts';
+ e.textContent=(MV.proj?MV.proj+' · ':'')+t;return t;}
+function mvChips(){
+ const bar=$('mfilters');if(!bar||!MV.P)return;
+ MV_ORDER.concat(['all']).forEach(k=>{const b=bar.querySelector('[data-mv="'+k+'"]');
+  if(!b)return;b.classList.toggle('on',MV.filter===k);
+  const c=b.querySelector('i');if(c)c.textContent=MV.P.vc[k]||0;});}
+function mvFilter(k){MV.filter=(MV.filter===k&&k!=='all')?'all':k;
+ mvChips();mvCounts();mvPaint();return MV.filter;}
+function mvSelect(file){
+ const n=MV.P&&MV.P.by[file];
+ MV.sel=n?{n:n}:null;MV.txt=null;mvDetail();mvPaint();return MV.sel?file:null;}
+function mvDetail(){
+ const d=$('mapdetail');if(!d)return false;
+ const f=MV.sel;
+ if(!f){d.className='';d.innerHTML='';return false;}
+ const n=f.n,esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+ const lst=(arr,lab)=>arr.length?'<div class="dsec">'+lab+' ('+arr.length+')</div>'+
+   arr.map(x=>'<a class="fx" onclick="mvSelect(\''+x+'\')">'+esc(x.replace(/\.md$/,''))+'</a>').join(''):'';
+ d.className='on';
+ d.innerHTML='<span class="dclose" onclick="mvSelect(null)">✕</span>'+
+  '<span class="dv" style="color:'+n.vcol+';border-color:'+n.vcol+'">'+n.vlabel+'</span>'+
+  '<h4>'+esc(n.title)+'</h4>'+
+  '<div class="dmeta">'+esc(n.file)+'<br>'+esc(n.date)+' · '+n.project+' · '+
+   n.origin.toUpperCase()+' · '+n.words+' words</div>'+
+  (n.status?'<div class="dst">'+esc(n.status)+'</div>':'')+
+  lst(n.cites,'Cites')+lst(n.cited_by,'Cited by')+
+  (n.cites.length||n.cited_by.length?'':'<div class="dsec">No citations either way</div>')+
+  '<div class="dsec"><a class="fx" onclick="mvRead()">READ THE FILE ▸</a></div>'+
+  (MV.txt?'<pre class="dtxt">'+esc(MV.txt)+'</pre>':'');
+ return true;}
+async function mvRead(){
+ if(!MV.sel)return null;
+ try{const r=await fetch('/fact/'+encodeURIComponent(MV.sel.n.file));const j=await r.json();
+  MV.txt=j.text||j.error||'(empty)';}catch(e){MV.txt='could not read the file: '+e;}
+ mvDetail();return MV.txt;}
+function mvLaneAt(my){
+ if(!MV.lay)return null;
+ for(const gm of MV.lay.geom) if(my>=gm.top&&my<gm.top+gm.h) return gm.name;
+ return null;}
+function mvWire(){
+ const cv=$('mapc');if(!cv||cv._mvwired)return false;cv._mvwired=true;
+ const at=e=>{const r=cv.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top];};
+ cv.addEventListener('mousemove',e=>{const [x,y]=at(e);
+  const h=mvHit(MV.lay,x,y);
+  const changed=(h?h.n.file:null)!==(MV.hov?MV.hov.n.file:null);
+  MV.hov=h;cv.classList.toggle('pick',!!h||!!(MV.lay&&x<MV.lay.L-14));
+  if(changed)mvPaint();});
+ cv.addEventListener('mouseleave',()=>{if(MV.hov){MV.hov=null;mvPaint();}});
+ cv.addEventListener('click',e=>{const [x,y]=at(e);
+  const h=mvHit(MV.lay,x,y);
+  if(h){mvSelect(h.n.file);return;}
+  if(MV.lay&&x<MV.lay.L-14){const lane=mvLaneAt(y);
+   MV.proj=(MV.proj===lane)?null:lane;mvCounts();mvPaint();return;}
+  mvSelect(null);});
+ if(window.ResizeObserver)new ResizeObserver(()=>{if(lensView()==='map')mvPaint();})
+   .observe(cv.parentNode);
+ const bar=$('mfilters');
+ // the map is a picture of files on disk, not a live gauge — polling it would be a lie about
+ // how often the corpus changes. ⟳ re-reads it after a /remember.
+ if(bar)bar.addEventListener('click',e=>{const b=e.target.closest('[data-mv]');
+  if(!b)return;
+  if(b.dataset.mv==='reload'){MV.sel=null;MV.txt=null;mvDetail();mapDraw(true);return;}
+  mvFilter(b.dataset.mv);});
+ return true;}
+// The map is fetched once, on first open. It is a picture of files on disk, not a live gauge —
+// polling it would be a lie about how often the corpus changes. MAP again after /remember to refresh.
+async function mapDraw(force){
+ mvWire();
+ const e=$('mapempty');
+ if(MV.busy)return false;
+ if(!MV.loaded||force){
+  MV.busy=true;if(e){e.style.display='';e.textContent='Reading the corpus…';}
+  try{const r=await fetch('/blueprint');const j=await r.json();
+   MV.P=mvPrep(j);MV.loaded=true;MV.err='';}
+  catch(err){MV.err=String(err);
+   if(e){e.textContent='Could not read /blueprint — '+MV.err;}MV.busy=false;return false;}
+  MV.busy=false;mvChips();}
+ if(e)e.style.display='none';
+ mvCounts();mvChips();mvPaint();
+ return true;}
+function wCount(){
+ const all=S.order.map(i=>S.calls.get(i)).filter(Boolean);
+ const shown=all.filter(wVisible).length;
+ const e=$('wcount');
+ if(e)e.textContent=all.length
+   ?(shown===all.length?all.length+' step'+(all.length===1?'':'s')
+                       :shown+' of '+all.length+' steps')
+   :'no steps yet';
+ const t=$('lens-n');if(t)t.textContent=all.length?String(all.length):'';
+ return shown;}
+function wFilter(f){
+ S.wfilter=f;
+ ['all','edit','cmd'].forEach(k=>{const b=$('wf-'+k);if(b)b.classList.toggle('on',k===f);});
+ S.order.forEach(i=>{const c=S.calls.get(i);if(c)ledgerPaint(c);});
+ wCount();return f;}
+// One line in the conversation standing in for a whole block of work. Clicking it opens WORK
+// at that turn's first step, so the prose never fills with tool spam.
+function wLine(){
+ if(!thread)return null;
+ const ids=S.turn.stepIds||[];
+ if(!ids.length)return null;
+ let el=S.turn.lineEl;
+ if(!el){
+  el=document.createElement('div');el.className='workline';
+  if(el.addEventListener)el.addEventListener('click',()=>wJumpTo(ids[0],true));
+  thread.appendChild(el);S.turn.lineEl=el;toBottom();}
+ const cs=ids.map(i=>S.calls.get(i)).filter(Boolean);
+ const ed=cs.filter(c=>c.kind==='edit').length,cm=cs.filter(c=>c.kind==='cmd').length,
+       lk=cs.filter(c=>c.kind==='look').length,bad=cs.filter(c=>c.ok===false).length;
+ const bits=[];
+ if(ed)bits.push(ed+' edit'+(ed===1?'':'s'));
+ if(cm)bits.push(cm+' command'+(cm===1?'':'s'));
+ if(lk)bits.push(lk+' lookup'+(lk===1?'':'s'));
+ el.className='workline'+(bad?' err':'');
+ el.innerHTML='<span class="wl-k">WORK</span><span>'+esc(bits.join(' · ')||'running…')+
+  (bad?' · '+bad+' failed':'')+'</span><span class="wl-n">'+cs.length+' steps ›</span>';
+ return el;}
+function ledgerPaint(call){
+ const r=call.el;if(!r)return;
+ r.querySelector('.wn').textContent=String(call.step||0).padStart(2,'0');
+ r.querySelector('.wk').textContent=String(call.name||call.col).toUpperCase();
+ const t=r.querySelector('.wt');
+ t.textContent=call.summary||call.name;t.title=call.summary||call.name;
+ r.querySelector('.wms').textContent=call.ok===null?'…':fmtMs(call.ms);
+ r.querySelector('.wst').textContent=call.ok===null?'RUN':(call.ok?'OK':'ERR');
+ const b=r.querySelector('.wbody');if(b)b.innerHTML=call.open?wBody(call):'';
+ focusActivity();
+ r.className='wstep'+(call.ok===null?' run':(call.ok?' ok':' err'))+
+   (call.open?' open':'')+
+   (S.sel&&S.sel.kind==='tool'&&S.sel.id===call.id?' sel':'')+
+   (wVisible(call)?'':' hide');}
+function ledgerAdd(d){
+ const call={id:d.id,name:d.name||'',col:toolColumn(d.name),kind:wKind(d.name),
+   summary:d.summary||String(d.name||''),
+   input:(typeof d.input==='string')?d.input:'',t0:d.t0||Date.now(),
+   t1:null,ms:null,ok:null,content:null,el:null,
+   // real work opens while it runs so you can watch it; a lookup stays folded away
+   open:isRealWork(d.name),userToggled:false,step:0};
+ S.calls.set(call.id,call);S.order.push(call.id);call.step=S.order.length;
+ if(S.turn.stepIds)S.turn.stepIds.push(call.id);
+ workEmptyOff();profileRender();
+ if(ledger){call.el=ledgerRow(call);ledger.appendChild(call.el);ledgerPaint(call);
+  while(ledger.children.length>300){
+   const dead=ledger.firstChild;ledger.removeChild(dead);
+   const id=dead.dataset&&dead.dataset.id;if(id){S.calls.delete(id);}}
+  workStick();}
+ wCount();wLine();
+ return call;}
+function ledgerDone(d){
+ const call=S.calls.get(d.id);if(!call)return null;
+ call.ok=!!d.ok;
+ // failures auto-expand, always. A success respects a step you opened or closed by hand.
+ if(!call.ok)call.open=true; else if(!call.userToggled)call.open=false;
+ ledgerPaint(call);wLine();
+ return call;}
+// tool_result may arrive for ANY outstanding call, in any order. It is keyed by id and only
+// repaints the inspector when the call it belongs to is the one being inspected.
+function ledgerResult(d){
+ const call=S.calls.get(d.id);if(!call)return null;
+ call.ok=!!d.ok;
+ call.ms=(typeof d.ms==='number')?d.ms:call.ms;
+ call.t1=(typeof d.t1==='number')?d.t1:call.t1;
+ if(typeof d.content==='string')call.content=d.content;
+ if(!call.ok)call.open=true; else if(!call.userToggled)call.open=false;
+ ledgerPaint(call);profileRender();wLine();
+ return call;}
+function workEmptyOff(){const e=$('work-empty');if(e)e.style.display='none';}
+function attr(v){return esc(String(v)).replace(/"/g,'&quot;');}
+// The turn profile: one segment per call, placed on a shared axis by its own t0 and scaled by
+// its own ms. The gaps are the model thinking. A call still running draws out to now, so the
+// band grows in real time rather than appearing complete after the fact.
+function profileRender(){
+ const e=$('ptrack');if(!e)return 0;
+ const calls=S.order.map(i=>S.calls.get(i)).filter(Boolean);
+ if(!calls.length){e.innerHTML='<span class="idle">NO TURN YET</span>';e.title='';return 0;}
+ const now=Date.now();
+ const t0=Math.min.apply(null,calls.map(c=>c.t0));
+ const ends=calls.map(c=>(c.ms!=null)?(c.t0+c.ms):(S.turn.active?now:c.t0));
+ const span=Math.max(1,Math.max.apply(null,ends)-t0);
+ e.innerHTML=calls.map(c=>{
+  const d=(c.ms!=null)?c.ms:(S.turn.active?(now-c.t0):0);
+  const l=100*(c.t0-t0)/span, w=Math.max(0.5,100*d/span);
+  return '<i class="'+(c.ok===null?'run':(c.ok?'ok':'err'))+'" data-id="'+attr(c.id)+
+   '" style="left:'+l.toFixed(2)+'%;width:'+Math.min(w,100-l).toFixed(2)+'%" title="'+
+   attr(c.col+' · '+c.summary+' · '+fmtMs(c.ms))+'"></i>';}).join('');
+ e.title=calls.length+' calls across '+fmtMs(span)+
+   ' — the gaps are the model thinking, not idle time';
+ return calls.length;}
+function logLine(kind,text,cls){
+ if(!ledger)return null;
+ workEmptyOff();
+ const r=document.createElement('div');r.className='wstep note '+(cls||'');
+ r.innerHTML='<div class="whead"><span class="wn">·</span><span class="wk"></span>'+
+   '<span class="wt"></span><span class="wms"></span><span class="wst"></span></div>';
+ r.querySelector('.wk').textContent=kind;
+ r.querySelector('.wt').textContent=text;r.querySelector('.wt').title=text;
+ r.querySelector('.wms').textContent=hhmmss();
+ ledger.appendChild(r);workStick();return r;}
+
+// ── the inspector ──────────────────────────────────────────────────────────
+// Work is what CHANGES something. A lookup is not work, and must never steal the pane you are
+// reading — that distinction is the whole point of the rule.
+const MUTATING=/^(bash|write|edit|multiedit|notebookedit)$/i;
+function isRealWork(name){return MUTATING.test(String(name||''));}
+function narrowLayout(){
+ try{return !!(window.matchMedia&&window.matchMedia('(max-width:1200px)').matches);}
+ catch(e){return false;}}
+// Auto-follow policy. Returns what it decided, so the tests can pin each branch.
+function inspectorFollow(call,reason){
+ if(!call)return 'none';
+ if(S.lensManual)return 'manual';                       // your hand wins for the rest of the turn
+ if(reason!=='fault'&&!isRealWork(call.name))return 'ignored';
+ wJumpTo(call.id,false);
+ return reason;}
+
+// An Edit's input is a before and an after. Showing it as raw JSON makes you diff it in your head.
+function renderDiff(input){
+ let o;try{o=JSON.parse(input);}catch(e){return null;}
+ const pairs=[];
+ const take=x=>{if(x&&typeof x.old_string==='string'&&typeof x.new_string==='string')
+   pairs.push([x.old_string,x.new_string]);};
+ take(o); if(Array.isArray(o.edits))o.edits.forEach(take);
+ if(!pairs.length)return null;
+ // the spans are block-level, so they break their own lines — joining with \n too would
+ // double every gap
+ return pairs.map(([a,b])=>
+   a.split('\n').map(l=>'<span class="del">- '+esc(l)+'</span>').join('')+
+   b.split('\n').map(l=>'<span class="add">+ '+esc(l)+'</span>').join('')
+ ).join('<span class="hunkgap"></span>');}
+function markElision(s){
+ return esc(s).replace(/(… [\d,]+ chars elided …)/g,'<span class="elide">$1</span>');}
+
+// A memory fact (or a council seat's answer) opens as a step in the log — same renderer,
+// same scroll position, one place where everything the session touched can be read.
+function inspectorFact(name,text){
+ const id='doc:'+name;
+ let c=S.calls.get(id);
+ if(!c){
+  c={id:id,name:'Document',col:'MEM',kind:'look',summary:name,input:'',t0:Date.now(),
+     t1:null,ms:null,ok:true,content:text,el:null,open:true,userToggled:true,step:0};
+  S.calls.set(id,c);S.order.push(id);c.step=S.order.length;
+  workEmptyOff();
+  if(ledger){c.el=ledgerRow(c);ledger.appendChild(c.el);}
+ } else { c.content=text; }
+ wCount();wJumpTo(id,true);return id;}
+
+// ── the streaming repaint ──────────────────────────────────────────────────
+// One repaint per animation frame, not one per token. Re-rendering the whole answer on every
+// token is O(n^2), drops the caret, and wipes any selection the reader is holding.
+function paint(force){
+ const s=ST;if(!s.msg)return;
+ if(force){if(s.rafId)cancelAnimationFrame(s.rafId);s.rafId=0;
+  s.painted=s.raw;s.msg.innerHTML=renderMD(s.raw);stick();return;}
+ if(s.rafId)return;
+ s.rafId=requestAnimationFrame(()=>{s.rafId=0;
+  if(s.raw===s.painted||selIn(s.msg))return;
+  s.painted=s.raw;s.msg.innerHTML=renderMD(s.raw)+CARET;stick();});}
+function add(cls,tag,html){
+ const d=document.createElement('div');d.className='msg '+cls;
+ d.innerHTML='<div class="who">'+tag+'</div><div class="body">'+html+'</div>';
+ thread.appendChild(d);
+ while(thread.children.length>60)thread.removeChild(thread.firstChild);
+ toBottom();return d.querySelector('.body');}
+
+// ── minds + meters ─────────────────────────────────────────────────────────
+function who(){return S.mode==='alice'?'ALICE':'ODIN';}
+function setMind(name,state){
+ const e=$('st-'+name.toLowerCase());if(e)e.textContent=state;
+ if(name.toLowerCase()===S.mode)setEntState(state);   // drives how that mind moves
+ const row=document.querySelector('.mind[data-m="'+name.toLowerCase()+'"]');
+ if(row&&row.classList)row.classList.toggle('busy',state!=='IDLE');
+ const h=$('h-state');if(h)h.textContent=state;}
+function setMode(m){
+ if(m===S.mode)return;S.mode=m;MODE=m;
+ document.body.classList.toggle('alice',m==='alice');
+ document.querySelectorAll('.mind').forEach(el=>
+   el.classList.toggle('on',el.dataset.m===m));
+ const chip=$('modechip');if(chip)chip.textContent=(m==='alice')?'◉ ALICE':'◉ ODIN';
+ const rv=$('minds-rv');if(rv)rv.textContent=who();
+ if(inp)inp.placeholder='Speak or type to '+who()+'…';}
+function toggleMode(){setMode(S.mode==='odin'?'alice':'odin');}
+// The activity panel. Fed from S.calls — the same records the work stream and the inspector
+// draw — so there is never a second copy of what happened to drift out of step.
+function focusActivity(){
+ const a=$('activity');if(!a)return 0;
+ if(!document.body.classList.contains('focus')){a.className='';return 0;}
+ const calls=S.order.map(i=>S.calls.get(i)).filter(Boolean).slice(-8);
+ const st=$('h-state')?$('h-state').textContent:'';
+ a.innerHTML='<div class="st">'+esc(st||'IDLE')+'</div>'+calls.map(c=>
+  '<div class="ln '+(c.ok===null?'run':(c.ok?'ok':'err'))+'"><span class="d">'+
+  (c.ok===null?'▸':(c.ok?'✓':'✕'))+'</span>'+esc(c.summary||c.name)+
+  (c.ms!==null&&c.ms!==undefined?' <span class="ms">'+fmtMs(c.ms)+'</span>':'')+
+  '</div>').join('');
+ a.className=(S.turn.active||calls.length)?'on':'';
+ return calls.length;}
+function toggleFocus(){
+ const on=document.body.classList.toggle('focus');
+ const b=$('btn-focus');if(b)b.classList.toggle('on',on);
+ focusActivity();
+ setTimeout(()=>{resize();stick();},60);   // the canvas and the reading column changed rooms
+ return on;}
+function toggleFull(){
+ const d=document;
+ if(!d.fullscreenElement){
+  if(d.documentElement.requestFullscreen)d.documentElement.requestFullscreen().catch(()=>{});
+  return 'enter';}
+ if(d.exitFullscreen)d.exitFullscreen().catch(()=>{});
+ return 'exit';}
+function toggleDrawer(force){
+ const b=document.body;
+ const on=(force===undefined)?b.classList.contains('rail-hidden'):!!force;
+ b.classList.toggle('rail-hidden',!on);
+ setTimeout(resize,300);        // the rail changed width; the canvas has to follow
+ return on;}
+function focusInput(){
+ if(inp&&inp.focus&&document.activeElement!==inp)inp.focus();
+ return document.activeElement===inp;}
+// After a transport click the browser leaves focus on the button. Hand it back, or the next
+// thing typed goes nowhere. Not while the blueprint is open — it owns the screen and has its
+// own search box.
+function returnFocus(){if(!bpOn)focusInput();return document.activeElement===inp;}
+// Returns what it did, so the regression test can assert on it.
+function onKeyDown(e){
+ if(e.key==='Escape'){
+  if(bpOn){if(bpSel)bpSelect(null);else toggleBlueprint();return 'blueprint';}
+  if(document.body.classList.contains('focus')){toggleFocus();return 'focus-off';}
+  if(_abort||_councilAbort){stopTurn();return 'stop';}
+  return 'ignored';}
+ if(document.activeElement===inp)return 'typing';
+ if((e.ctrlKey||e.metaKey)&&(e.key==='b'||e.key==='B')){
+  if(e.preventDefault)e.preventDefault();toggleBlueprint();return 'blueprint';}
+ if((e.ctrlKey||e.metaKey)&&(e.key==='`'||e.key==='~')){
+  if(e.preventDefault)e.preventDefault();toggleLens();return 'lens';}
+ if(e.key==='Tab'){if(e.preventDefault)e.preventDefault();toggleDrawer();return 'drawer';}
+ if(e.ctrlKey||e.metaKey||e.altKey)return 'ignored';
+ if(bpOn)return 'ignored';
+ // A bare letter must NEVER be a shortcut here. Anything you type with nothing focused belongs
+ // in the message box — that is the bug this replaces: one button click and every message you
+ // typed afterwards was eaten by a shortcut instead of reaching ODIN.
+ if(e.key==='Enter'||e.key==='Backspace'||e.key.length===1){focusInput();return 'focus';}
+ return 'ignored';}
+// CHAT and WORK are two views of the same live turn. A hand toggle disables auto-switching for
+// the rest of the turn; a hand toggle made while NOTHING is running sticks, so choosing WORK
+// while idle keeps you there.
+function setLens(v,byHand){
+ if(byHand){S.lensManual=true;S.lensManualIdle=!S.turn.active;}
+ document.body.classList.toggle('lens-map',v==='map');
+ const w=$('lens-work'),m=$('lens-map');
+ if(w)w.classList.toggle('on',v==='work');
+ if(m)m.classList.toggle('on',v==='map');
+ const h=$('stagehead');if(h)h.textContent=(v==='map')?'Body of work':'Work';
+ if(v==='work')workStick(); else mapDraw();
+ return v;}
+function lensView(){return document.body.classList.contains('lens-map')?'map':'work';}
+function toggleLens(){return setLens(lensView()==='map'?'work':'map',true);}
+// A meter with no real data shows an em dash. Never a zero, never a fake sweep.
+function setMeter(id,txt,cls){const e=$(id);if(!e)return;
+ e.textContent=(txt===null||txt===undefined)?'—':txt;
+ e.className='big num'+(cls?' '+cls:'');}
+// A meter track only exists for a quantity with a real ceiling. No reading = no fill.
+function meterBar(id,frac,cls){const e=$(id);if(!e)return;
+ if(frac===null||frac===undefined){e.style.width='0%';e.className='mb none';return;}
+ e.className='mb'+(cls?' '+cls:'');
+ e.style.width=(Math.max(0,Math.min(1,frac))*100).toFixed(1)+'%';}
+function sparkPush(v){
+ S.cpu.push((typeof v==='number')?v:null);
+ while(S.cpu.length>SPARK_N)S.cpu.shift();
+ sparkDraw();return S.cpu.length;}
+function sparkDraw(){
+ const e=$('spark-cpu');if(!e)return;
+ const h=S.cpu,pad=SPARK_N-h.length,out=[];
+ for(let i=0;i<SPARK_N;i++){
+  const v=(i<pad)?null:h[i-pad];
+  // a slot with no sample is an unlit segment, not a zero-height bar pretending to be 0%
+  out.push((v===null||v===undefined)?'<i class="n"></i>'
+    :'<i style="height:'+Math.max(2,Math.min(100,v)).toFixed(0)+'%"></i>');}
+ e.innerHTML=out.join('');}
+// The two minds report usage under different field names: the Claude SDK's, Gemini's REST
+// names, and Gemini's camelCase. Take whichever is present; never invent a number.
+function budgetAdd(u,who){
+ u=u||{};
+ const tin =(u.input_tokens ?? u.prompt_tokens ?? u.promptTokenCount ?? 0);
+ const tout=(u.output_tokens ?? u.completion_tokens ?? u.candidatesTokenCount ?? 0);
+ const t=S.tokens[who==='alice'?'alice':'odin'];
+ t.in+=(Number(tin)||0); t.out+=(Number(tout)||0);
+ budgetRender(); return t;}
+function fmtTok(n){
+ n=Number(n)||0;
+ if(n<1000)return String(n);
+ if(n<1e6)return (n/1000).toFixed(n<10000?1:0)+'K';
+ return (n/1e6).toFixed(2)+'M';}
+// ═══════════════════════════════════════════════════════════════════════════
+// LIVE WORKSPACE — the files on disk, and which of them are moving.
+// "Active" is measured, never guessed: the server reports each file's age in SECONDS, because
+// the browser's clock is not this machine's clock and a file that looks stale because of a
+// timezone would be worse than no marker at all.
+// ═══════════════════════════════════════════════════════════════════════════
+// A directory is open when something inside it is live — the server folds each directory's age
+// down from its contents, so "live" reaches all the way up the chain. wsToggled holds the paths
+// where you have overridden that default, in either direction.
+let wsToggled=new Set(), wsSig='', wsActiveS=180;
+function wsOpen(path,nd){return (nd.age<wsActiveS) !== wsToggled.has(path);}
+function wsRow(name,depth,cls,path,extra,title){
+ return '<div class="ws-item '+cls+'"'+(path?' data-p="'+esc(path)+'"':'')+
+        (title?' title="'+esc(title)+'"':'')+'>'+
+        '<span class="ws-indent"></span>'.repeat(depth)+esc(name)+(extra||'')+'</div>';}
+function wsBuild(nodes,depth,base,out){
+ for(const nd of nodes){
+  const path=base+'/'+nd.name;
+  if(nd.dir){
+   const shut=!wsOpen(path,nd), kids=(nd.children||[]).length;
+   let extra='';
+   if(nd.deep)      extra=' <span class="ws-n">…</span>';
+   else if(shut&&kids) extra=' <span class="ws-n">'+kids+'</span>';
+   out.push(wsRow(nd.name+'/',depth,'dir'+(nd.age<wsActiveS?' active':''),path,extra,
+     nd.deep?'not listed — beyond the depth limit':(shut?kids+' hidden':'')));
+   if(!shut&&kids) wsBuild(nd.children,depth+1,path,out);
+  }else{
+   out.push(wsRow(nd.name,depth,(nd.age<wsActiveS?'active':''),'',
+     '',nd.name+' — last written '+wsAgo(nd.age)));
+  }}
+ return out;}
+function wsAgo(sec){
+ sec=Number(sec)||0;
+ if(sec<60)  return sec+'s ago';
+ if(sec<3600)return Math.round(sec/60)+'m ago';
+ if(sec<86400)return Math.round(sec/3600)+'h ago';
+ return Math.round(sec/86400)+'d ago';}
+function wsRender(j){
+ const tree=document.getElementById('ws-tree'); if(!tree||!j)return 0;
+ wsActiveS=j.active_s||wsActiveS;
+ const rows=wsBuild(j.tree||[],0,'',[]);
+ if(j.truncated) rows.push('<div class="ws-cut">listing stopped at '+j.cap+
+   ' entries — there is more on disk than is shown</div>');
+ if(!rows.length) rows.push('<div class="ws-cut">nothing to list</div>');
+ const keep=tree.scrollTop;                 // a poll must not throw away where you were reading
+ tree.innerHTML=rows.join('');
+ tree.scrollTop=keep;
+ const cnt=document.getElementById('ws-n');
+ // how many of the listed entries are live, out of how many there are — the second number is
+ // context for the first, and the first is the reason the panel is here.
+ let live=0; (function tally(ns){for(const x of ns){if(x.age<wsActiveS)live++;
+   if(x.children)tally(x.children);}})(j.tree||[]);
+ if(cnt)cnt.textContent=live+' / '+(j.count||0)+(j.truncated?'+':'');
+ return rows.length;}
+async function pollWorkspace(){
+ // The Live Workspace module is not in the rail by default. No panel means
+ // no reason to hit /api/workspace every 5s. Restore the #mod-ws markup and this re-arms.
+ if(!document.getElementById('ws-tree'))return;
+ try{
+  const r=await fetch('/api/workspace'); const j=await r.json();
+  // Re-rendering an unchanged tree throws away hover and costs a layout for nothing.
+  const sig=JSON.stringify(j.tree)+'|'+j.truncated+'|'+[...wsToggled].sort().join(',');
+  if(sig!==wsSig){ wsSig=sig; wsRender(j); }
+ }catch(e){}
+ setTimeout(pollWorkspace,5000);}
+document.addEventListener('click',e=>{
+ const it=e.target.closest&&e.target.closest('.ws-item[data-p]'); if(!it)return;
+ const p=it.dataset.p;
+ // Only directories carry data-p. Collapsing is what earns the pointer cursor on a tree this
+ // size — 436 entries is more than fits, and you cannot scroll past what you can fold away.
+ wsToggled.has(p)?wsToggled.delete(p):wsToggled.add(p);
+ wsSig='';                                   // force the next paint, do not wait 5s
+ pollWorkspaceNow();});
+async function pollWorkspaceNow(){
+ try{const r=await fetch('/api/workspace');wsRender(await r.json());}catch(e){}}
+pollWorkspace();
+
+function budgetRender(){
+ const o=S.tokens.odin,a=S.tokens.alice;
+ const eo=$('tel-odin'),ea=$('tel-alice'),bar=$('tel-bar');
+ if(eo)eo.textContent=fmtTok(o.in)+' / '+fmtTok(o.out);
+ if(ea)ea.textContent=fmtTok(a.in)+' / '+fmtTok(a.out);
+ const to=o.in+o.out, ta=a.in+a.out, all=to+ta;
+ // the bar is ODIN's share of the session against ALICE's. With nothing spent it stays empty
+ // rather than claiming a 50/50 split nobody measured.
+ if(bar)bar.style.width=all?((100*to/all).toFixed(1)+'%'):'0%';
+ // UI_TOKENS §1 / UI_V9 §2 — the same accumulation, shown again in the memory module as a
+ // single total per mind. Read from S.tokens rather than counted a second time: two
+ // accumulators over one event is two numbers that can disagree about one fact.
+ const ko=$('tok-odin'), ka=$('tok-alice');
+ if(ko)ko.textContent=to?to.toLocaleString():'—';
+ if(ka)ka.textContent=ta?ta.toLocaleString():'—';
+ return all;}
+function usageRender(u){
+ S.turn.usage=u||{};
+ 
+ const bits=[];
+ if(u&&u.cache_read!==undefined)bits.push('cache read '+Number(u.cache_read).toLocaleString());
+ if(u&&u.duration_ms!==undefined)bits.push('sdk '+fmtMs(u.duration_ms));
+ if(u&&u.num_turns!==undefined)bits.push(u.num_turns+' sdk turns');
+ if(bits.length)logLine('USAGE',bits.join(' · '));}
+function turnMeter(){
+ if(!S.turn.active)return;
+ setMeter('m-turn',fmtMs(Date.now()-S.turn.t0));
+ profileRender();}
+function memRender(m){
+ S.mem=m;
+ const rv=$('mem-rv');if(rv)rv.textContent=(m.count!==undefined?m.count+' facts':'—');
+ // #mem-budget is gone — the raw character budget it printed read as noise. #membar still
+ // draws the same fraction, which is the part that is legible at a glance.
+ const f=$('membar-f');
+ if(f)f.style.width=(m.budget?Math.min(100,100*(m.budget_used||0)/m.budget):0).toFixed(1)+'%';
+ const line=(m.loaded||0)+' inline · '+(m.indexed||0)+' indexed · '+
+   (m.resent?'sent this turn':'already in session context');
+ const sub=$('mem-sub');
+ if(sub)sub.textContent=line;
+ // below 800px the module is a strip and these two lines are demoted to its tooltip, not dropped
+ const mod=$('mod-mem');
+ if(mod)mod.title='memory · '+(m.count||0)+' facts · budget '+(m.budget_used||0).toLocaleString()+
+   ' / '+(m.budget||0).toLocaleString()+' chars · '+line;
+ const box=$('memnames');
+ if(box){box.innerHTML='';
+  (m.names||[]).forEach(n=>{const d=document.createElement('div');
+   d.textContent=n;d.title=n;d.addEventListener('click',()=>openFact(n));box.appendChild(d);});}}
+async function openFact(name){
+ try{const r=await fetch('/fact/'+encodeURIComponent(name));const j=await r.json();
+  if(j.text!==undefined)inspectorFact(j.file||name,j.text);
+  else inspectorFact(name,'(could not read this fact: '+(j.error||'unknown')+')');
+ }catch(e){inspectorFact(name,'(could not read this fact: '+e+')');}}
+
+// ── audio ──────────────────────────────────────────────────────────────────
+function enqueueAudio(c){if(!c||!c.url)return;_aq.push(c);if(!_aplay)playNext();}
+function playNext(){
+ if(!_aq.length){_aplay=false;_acur=null;
+  mtxSet(who(),'TTS','used');
+  if(!S.turn.active)setMind(who(),'IDLE');return;}
+ _aplay=true;setMind(who(),'SPEAKING');mtxSet(who(),'TTS','active');
+ const c=_aq.shift();CLIP=c;const a=new Audio(c.url);_acur=a;
+ a.onended=()=>playNext();a.onerror=()=>playNext();a.play().catch(()=>{});}
+function stopAudio(){_aq=[];_aplay=false;CLIP=null;
+ if(_acur){try{_acur.pause();}catch(e){}_acur=null;}}
+
+// ── the event dispatcher: every event the stream emits lands somewhere ──────
+function onEvent(e){
+ const d=e.data||{},W=who();
+ switch(e.event){
+  case 'text':
+   ST.raw+=(d.text||'');paint();
+   mtxSet(W,'SDK','active');setMind(W,'RESPONDING');
+   if($('conv-rv'))$('conv-rv').textContent=ST.raw.length.toLocaleString()+' chars';
+   break;
+  case 'greet':
+   // the fast LOCAL front desk answered. No Claude, no tools — say so rather than imply the agent ran.
+   mtxSet('ODIN','SDK','used');
+   logLine('LOCAL','front desk answered from the local model — no agent, no tools');
+   break;
+  case 'tool':{
+   glitch=1;spawnArc();                 // a real tool call sparks the mind that made it
+   const c=ledgerAdd(d);
+   mtxSet(W,'SDK','active');mtxSet(W,c.col,'active');
+   setMind(W,'TOOLING');
+   inspectorFollow(c,'work');
+   break;}
+  case 'tool_done': ledgerDone(d); break;
+  case 'tool_result':{
+   const c=ledgerResult(d);
+   if(c){mtxSet(W,c.col,c.ok?'used':'err');
+    if(!c.ok)inspectorFollow(c,'fault');}   // a failure always earns the pane
+   break;}
+  case 'mem':
+   memRender(d);
+   mtxSet(W,'MEM',d.resent?'active':'used');
+   break;
+  case 'usage': usageRender(d); budgetAdd(d,S.mode); break;
+  case 'audio':
+   enqueueAudio({url:d.url,env:d.env||[],dur:d.dur||0});
+   break;
+  case 'final':
+   // final carries the authoritative complete answer; deltas are only a preview of it.
+   if(typeof d.text==='string'&&d.text.length>=ST.raw.length)ST.raw=d.text;
+   paint(true);
+   if(!ST.raw.trim()&&ST.msg)ST.msg.innerHTML='<span style="opacity:.5">…</span>';
+   tetherPulse(S.mode==='odin');        // the answer travels back down the link
+   break;
+  case 'error':
+   if(ST.rafId){cancelAnimationFrame(ST.rafId);ST.rafId=0;}
+   if(ST.msg)ST.msg.innerHTML='<span class="fault">'+esc(d.message||'that request failed')+'</span>';
+   mtxSet(W,'SDK','err');
+   logLine('FAULT',d.message||'that turn failed','err');
+   break;
+  case 'done': turnEnd(); break;
+ }
+ return e.event;}
+
+function turnStart(){
+ mtxTurnStart();focusActivity();
+ if(!S.lensManualIdle)S.lensManual=false;   // a hand toggle made while idle sticks past the turn
+ S.turn={active:true,t0:Date.now(),ms:null,usage:null,stepIds:[],lineEl:null};
+ setMeter('m-turn','0ms');
+ mtxSet(who(),'SDK','pending');setMind(who(),'THINKING');
+ const b=$('btn-stop');if(b)b.classList.add('on');}
+function turnEnd(){
+ S.turn.active=false;S.turn.ms=Date.now()-S.turn.t0;
+ setMeter('m-turn',fmtMs(S.turn.ms));
+ mtxTurnEnd();focusActivity();
+ if(!_aplay)setMind(who(),'IDLE');
+ const b=$('btn-stop');if(b)b.classList.remove('on');}
+
+// ── send ───────────────────────────────────────────────────────────────────
+async function send(){
+ const q=inp.value.trim();if(!q)return;inp.value='';
+ add('you','YOU',esc(q));
+ turnStart();
+ ST.raw='';ST.painted='';ST.rafId=0;
+ ST.msg=add(S.mode==='alice'?'alice':'odin',who(),'');
+ _abort=new AbortController();
+ try{
+  const r=await fetch('/ask_stream',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({text:q,mode:S.mode}),signal:_abort.signal});
+  const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+  while(true){const{value,done}=await rd.read();if(done)break;
+   buf+=dec.decode(value,{stream:true});let i;
+   while((i=buf.indexOf('\n\n'))>=0){const fr=buf.slice(0,i);buf=buf.slice(i+2);
+    const e=parseSSE(fr);if(e)onEvent(e);}}
+ }catch(err){
+  if(err.name!=='AbortError'){paint(true);
+   if(ST.msg)ST.msg.innerHTML+='<span class="fault"> — connection lost</span>';
+   logLine('FAULT','connection to /ask_stream lost','err');}
+ }
+ if(ST.rafId)cancelAnimationFrame(ST.rafId);
+ if(ST.painted!==ST.raw&&ST.raw&&ST.msg)ST.msg.innerHTML=renderMD(ST.raw);
+ else if(ST.msg)ST.msg.querySelectorAll('.caret').forEach(c=>c.remove());
+ if(S.turn.active)turnEnd();
+ _abort=null;}
+async function stopTurn(){
+ try{await fetch('/interrupt',{method:'POST'});}catch(_){}
+ stopAudio();logLine('STOPPED','turn interrupted','err');
+ if(thread){const d=document.createElement('div');d.className='divider stopped';
+  d.textContent='STOPPED';thread.appendChild(d);stick();}
+ if(_abort)_abort.abort();
+ if(_councilAbort)_councilAbort.abort();
+ if(S.turn.active)turnEnd();}
+
+// ── council rack ───────────────────────────────────────────────────────────
+function buildCouncil(){
+ const box=$('cseats');if(!box)return;box.innerHTML='';
+ SEATS.forEach(n=>{
+  const d=document.createElement('div');d.className='cseat';d.dataset.seat=n;
+  d.innerHTML='<i class="lt"></i><span class="nm"></span><span class="ms"></span>';
+  d.querySelector('.nm').textContent=n;
+  d.title=n+' · idle';
+  d.addEventListener('click',()=>{const s=S.council[n];
+   if(s&&s.text)inspectorFact(n+' · '+(s.role||'')+' · '+fmtMs(s.ms),s.text);});
+  box.appendChild(d);});
+ councilSummary();}
+function councilSeat(name,state,extra){
+ const s=S.council[name]||(S.council[name]={state:'idle',t0:0,ms:null,text:'',role:''});
+ s.state=state;Object.assign(s,extra||{});
+ const el=document.querySelector('.cseat[data-seat="'+name+'"]');
+ if(el){el.className='cseat '+(state==='idle'?'':state);
+  el.querySelector('.ms').textContent=(state==='active'||state==='pending')?'…':fmtMs(s.ms);
+  el.title=name+' · '+state+(s.ms!=null?' · '+fmtMs(s.ms):'');}
+ councilSummary();return s;}
+function councilSummary(){
+ const rv=$('council-rv');if(!rv)return;
+ const vals=Object.values(S.council);
+ const running=vals.filter(s=>s.state==='active'||s.state==='pending').length;
+ const done=vals.filter(s=>s.state==='done').length;
+ rv.textContent=running?(running+' running'):(done?(done+'/'+SEATS.length+' in'):SEATS.length+' seats');}
+function councilTick(){
+ for(const n in S.council){const s=S.council[n];
+  if(s.state!=='active'&&s.state!=='pending')continue;
+  const el=document.querySelector('.cseat[data-seat="'+n+'"]');
+  if(el)el.querySelector('.ms').textContent=fmtMs(Date.now()-s.t0);}}
+async function runCouncil(){
+ const btn=$('btn-council');if(btn)btn.disabled=true;
+ SEATS.forEach(n=>{S.council[n]={state:'idle',t0:0,ms:null,text:'',role:''};councilSeat(n,'idle');});
+ mtxSet('COUNCIL','WEB','pending');
+ logLine('COUNCIL','convening the bench — seats report as they land');
+ const wrap=add('','COUNCIL','<span style="opacity:.6">waiting on the bench…</span>');
+ _councilAbort=new AbortController();
+ const texts={};
+ try{
+  const r=await fetch('/council_stream',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({text:inp.value.trim()}),signal:_councilAbort.signal});
+  const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+  while(true){const{value,done}=await rd.read();if(done)break;
+   buf+=dec.decode(value,{stream:true});let i;
+   while((i=buf.indexOf('\n\n'))>=0){const fr=buf.slice(0,i);buf=buf.slice(i+2);
+    const e=parseSSE(fr);if(!e)continue;
+    if(e.event==='seat_start'){
+     councilSeat(e.data.seat,'active',{t0:Date.now(),role:e.data.role});
+     mtxSet('COUNCIL','WEB','active');}
+    else if(e.event==='seat_done'){
+     const bad=/^\[/.test(e.data.text||'');
+     councilSeat(e.data.seat,bad?'err':'done',{ms:e.data.ms,text:e.data.text,role:e.data.role});
+     texts[e.data.seat]=e.data;
+     logLine('SEAT',e.data.seat+' · '+fmtMs(e.data.ms),bad?'err':'ok');
+     wrap.innerHTML=Object.keys(texts).map(n=>
+      '<div style="margin-bottom:14px"><div class="who" style="color:var(--t2)">'+esc(n)+
+      ' · '+esc(texts[n].role||'')+' · '+fmtMs(texts[n].ms)+'</div>'+
+      renderMD(texts[n].text||'')+'</div>').join('');
+     stick();}
+    else if(e.event==='done'){
+     logLine('COUNCIL','rack complete · '+fmtMs(e.data.ms));
+     mtxSet('COUNCIL','WEB','used');}}}
+ }catch(err){
+  if(err.name!=='AbortError'){
+   wrap.innerHTML='<span class="fault">the council did not answer</span>';
+   mtxSet('COUNCIL','WEB','err');logLine('FAULT','council stream failed','err');}
+ }
+ if(btn)btn.disabled=false;_councilAbort=null;}
+
+// ── remember ───────────────────────────────────────────────────────────────
+async function remember(){
+ let t=inp.value.trim();
+ if(!t){const bodies=thread.querySelectorAll('.msg.odin .body,.msg.alice .body');
+  if(bodies.length)t=bodies[bodies.length-1].textContent.trim().slice(0,2000);}
+ if(!t){logLine('MEMORY','nothing to remember — type a fact first');return;}
+ try{const r=await fetch('/remember',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({text:t})});const j=await r.json();
+  if(j.ok){inp.value='';logLine('MEMORY','wrote '+j.file);mtxSet(who(),'MEM','active');}
+  else logLine('MEMORY','the write was refused','err');
+ }catch(e){logLine('FAULT','remember failed: '+e,'err');}}
+// ── always listening ───────────────────────────────────────────────────────
+// /listen/utterance captures ONE utterance by energy VAD and transcribes it locally. Nothing is
+// sent anywhere until a wake word matches, and everything you say that is not addressed to ODIN
+// is shown in the work stream and dropped.
+let auto=false;
+const WAKE=/^\s*(?:hey\s+|ok\s+|hi\s+)?(o'?d[ieauy]*[nmg]+)\b[\s,.:!?'-]*(.*)$/i;
+function wakeMatch(t){const m=(t||'').trim().match(WAKE);return (m&&m[2].trim())?m[2].trim():null;}
+function toggleAuto(){
+ auto=!auto;
+ const b=$('btn-auto');if(b)b.classList.toggle('on',auto);
+ document.body.classList.toggle('auto-on',auto);
+ if(auto){logLine('LISTEN','always-listening on — say “ODIN …” to send');autoLoop();}
+ else{logLine('LISTEN','always-listening off');
+  mtxSet('YOU','STT','idle');
+  if(!S.turn.active&&!_aplay)setMind(who(),'IDLE');}
+ return auto;}
+async function autoLoop(){
+ if(!auto)return 'off';
+ // never contend with a turn in flight, a clip playing, or press-to-talk holding the mic
+ if(_abort||_aplay||recording){setTimeout(autoLoop,350);return 'busy';}
+ mtxSet('YOU','STT','active');
+ if(!S.turn.active)setMind(who(),'LISTENING');
+ let j={};
+ try{const r=await fetch('/listen/utterance',{method:'POST'});j=await r.json();}catch(e){}
+ if(!auto)return 'off';
+ let outcome='silence';
+ if(j.text){
+  const cmd=wakeMatch(j.text);
+  if(cmd){outcome='woke';mtxSet('YOU','STT','used');
+   logLine('WAKE','“'+j.text+'”');
+   inp.value=cmd;send();}
+  else{outcome='ignored';
+   logLine('STT','“'+j.text+'” — not addressed to '+who()+', ignored');}
+ }
+ if(auto)setTimeout(autoLoop,80);
+ return outcome;}
+
+// ── microphone ─────────────────────────────────────────────────────────────
+async function toggleMic(){
+ if(micBusy)return;micBusy=true;const b=$('btn-talk');
+ try{
+  if(!recording){
+   const r=await fetch('/listen/start',{method:'POST'});const j=await r.json();
+   if(!j.ok){logLine('FAULT','microphone unavailable','err');micBusy=false;return;}
+   recording=true;if(b)b.classList.add('rec');
+   mtxSet('YOU','STT','active');setMind(who(),'LISTENING');
+  }else{
+   recording=false;if(b)b.classList.remove('rec');
+   mtxSet('YOU','STT','pending');
+   const r=await fetch('/listen/stop',{method:'POST'});const j=await r.json();
+   if(j.text){mtxSet('YOU','STT','used');inp.value=j.text;send();}
+   else{mtxSet('YOU','STT',j.error?'err':'used');
+    logLine('STT',j.error?('microphone: '+j.error):'nothing heard',j.error?'err':'');
+    setMind(who(),'IDLE');}
+  }
+ }catch(e){recording=false;if(b)b.classList.remove('rec');
+  mtxSet('YOU','STT','err');logLine('FAULT','microphone failed','err');}
+ micBusy=false;}
+
+// ── /metrics poll (1 Hz) ───────────────────────────────────────────────────
+function metricsRender(j){
+ S.metrics=j||{};
+ cpuPct=(typeof j.cpu==='number')?Math.max(0,Math.min(100,j.cpu)):0;  // the load arc, measured
+ setMeter('m-cpu',(typeof j.cpu==='number')?j.cpu.toFixed(1)+'%':null);
+ setMeter('m-tts',(typeof j.tts_queue==='number')?String(j.tts_queue):null);
+ sparkPush(j.cpu);
+ meterBar('bar-tts',(typeof j.tts_queue==='number')?j.tts_queue/8:null,
+   (j.tts_queue>=6)?'warn':'');
+ const up=$('h-uptime');
+ if(up)up.textContent=(typeof j.uptime_s==='number')?fmtDur(j.uptime_s):'—';
+ const si=$('h-signin');
+ if(si){
+  if(typeof j.signin_h==='number'){si.textContent=j.signin_h.toFixed(1)+'h';
+   si.className='big'+(j.signin_h<1?' bad':(j.signin_h<3?' warn':''));
+   meterBar('bar-signin',Math.min(1,j.signin_h/8),
+     j.signin_h<1?'bad':(j.signin_h<3?'warn':''));}
+  else{si.textContent=j.signin_ok?'ok':'EXPIRED';si.className='big bad';
+   meterBar('bar-signin',null);}
+  si.title=j.signin_note||'';}
+ const rv=$('mem-rv');
+ if(rv&&typeof j.facts==='number'&&!S.mem)rv.textContent=j.facts+' facts';
+ const w=$('wcount');
+ if(w&&typeof j.tts_bytes==='number')w.title='tts/ holds '+j.tts_files+' clips, '+
+   (j.tts_bytes/1048576).toFixed(1)+' MB · rss '+j.rss_mb+' MB';
+ const mset=(id,v)=>{const e=$(id);if(e)e.textContent=(v===null||v===undefined)?'—':v;};
+ mset('mach-up',(typeof j.uptime_s==='number')?fmtDur(j.uptime_s):null);
+ mset('mach-rss',(typeof j.rss_mb==='number')?(j.rss_mb+' MB'):null);
+ mset('mach-tts',(typeof j.tts_files==='number'&&typeof j.tts_bytes==='number')
+   ?(j.tts_files+' clips · '+(j.tts_bytes/1048576).toFixed(0)+' MB'):null);
+ mset('mach-facts',(typeof j.facts==='number')?String(j.facts):null);
+ mset('mach-lock',(j.turn_busy===undefined)?null:(j.turn_busy?'BUSY':'free'));
+ mset('mach-rv',(typeof j.cpu==='number')?(j.cpu.toFixed(0)+'% cpu'):null);}
+function fmtDur(s){
+ s=Math.floor(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);
+ return h?(h+'h '+String(m).padStart(2,'0')+'m'):(m+'m '+String(s%60).padStart(2,'0')+'s');}
+async function pollMetrics(){
+ try{const r=await fetch('/metrics');metricsRender(await r.json());}catch(e){}
+ setTimeout(pollMetrics,1000);}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BLUEPRINT — X is the date the fact was recorded, Y is its project lane,
+// arcs are one fact citing another. Every mark traces to the file itself.
+// ═══════════════════════════════════════════════════════════════════════════
+let bpOn=false,BP=null,bpSel=null,bpTimer=null,bpBy={},bpQuery='',bpLane=null,bpFirst=true;
+const VCOL={kill:'#ff6b81',pass:'#4be3a0',prior_art:'#a855f7',correction:'#f0883e',open:'#eab308'};
+const VNAME={kill:'KILLED',pass:'HOLDS',prior_art:'PRIOR ART',correction:'CORRECTED',open:'OPEN'};
+const VSRC={filename:'you named this verdict in the filename',status:'the file states this status',
+ tag:'set by an explicit blueprint tag',body:'inferred from wording in the body — unverified',
+ default:'no verdict stated anywhere in the file'};
+let bpOffV={};
+const NS='http://www.w3.org/2000/svg';
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in(a||{}))e.setAttribute(k,a[k]);return e;}
+async function loadBlueprint(){
+ try{const r=await fetch('/blueprint');const j=await r.json();BP=j;bpBy={};
+  j.nodes.forEach(n=>bpBy[n.file]=n);
+  layoutBlueprint();drawBlueprint();
+  if(bpFirst){bpFirst=false;bpGoNewest(true);}}   // open on the newest work, not the oldest
+ catch(e){document.getElementById('bp-sub').textContent='could not read the corpus';}}
+const COLW=116,ROWH=25,TOPPAD=34,LANEGAP=20;
+function bpShort(n){let t=(n.title||n.file).trim();
+ const p=(n.project||'').split(' ')[0];
+ if(p)t=t.replace(new RegExp('^'+p+'[\\s—:·-]*','i'),'').trim();
+ t=t.replace(/^[—:·-]+\s*/,'').trim();
+ if(!t)t=(n.title||n.file);
+ return t.length>17?t.slice(0,16)+'…':t;}
+function layoutBlueprint(){
+ const days=BP.days,dayX={};days.forEach((d,i)=>dayX[d]=60+i*COLW);
+ const lanes={};BP.projects.forEach(p=>lanes[p.name]={name:p.name,color:p.color,count:p.count,cells:{},max:0});
+ BP.nodes.forEach(n=>{const L=lanes[n.project];if(!L)return;
+  const k=n.date,arr=(L.cells[k]=L.cells[k]||[]);n.stack=arr.length;arr.push(n);
+  if(arr.length>L.max)L.max=arr.length;});
+ let y=TOPPAD;BP.lanes=[];
+ BP.projects.forEach(p=>{const L=lanes[p.name];L.y=y;L.h=Math.max(1,L.max)*ROWH;
+  y+=L.h+LANEGAP;BP.lanes.push(L);});
+ BP.W=60+days.length*COLW+90;BP.H=y+20;
+ BP.nodes.forEach(n=>{const L=lanes[n.project];if(!L){n.x=n.y=-999;return;}
+  n.x=dayX[n.date]||60;n.y=L.y+n.stack*ROWH+ROWH/2;});}
+function bpVisible(n){
+ if(bpOffV[n.verdict])return false;
+ if(bpLane&&n.project!==bpLane)return false;
+ if(bpQuery){const h=(n.title+' '+n.file+' '+n.project+' '+n.status_line+' '+n.snip).toLowerCase();
+  if(!h.includes(bpQuery))return false;}
+ return true;}
+function drawBlueprint(){
+ const svg=document.getElementById('bp-svg');svg.innerHTML='';
+ svg.setAttribute('width',BP.W);svg.setAttribute('height',BP.H);
+ svg.setAttribute('viewBox','0 0 '+BP.W+' '+BP.H);
+ document.getElementById('bp-plot').style.width=BP.W+'px';
+ const gBand=el('g');
+ BP.lanes.forEach(L=>{gBand.appendChild(el('rect',{x:0,y:L.y-6,width:BP.W,height:L.h+8,
+  fill:L.color,opacity:(bpLane&&bpLane!==L.name)?.01:.03,rx:6}));});
+ svg.appendChild(gBand);
+ const gGrid=el('g'),last=BP.days.length-1;
+ BP.days.forEach((d,i)=>{const x=60+i*COLW;
+  gGrid.appendChild(el('line',{x1:x,y1:22,x2:x,y2:BP.H-10,class:'bpgrid'}));
+  const t=el('text',{x:x,y:15,class:'bpday'+(i===last?' new':''),'text-anchor':'middle'});
+  t.textContent=(i===last?'▸ ':'')+d.slice(5);gGrid.appendChild(t);});
+ svg.appendChild(gGrid);
+ const lanesEl=document.getElementById('bp-lanes');lanesEl.innerHTML='';
+ lanesEl.style.height=BP.H+'px';
+ BP.lanes.forEach(L=>{const d=document.createElement('div');
+  d.className='bplane'+(bpLane&&bpLane!==L.name?' dim':'');
+  d.style.top=(L.y-4)+'px';d.style.color=L.color;
+  d.innerHTML='<span class="bar" style="background:'+L.color+';height:'+L.h+'px"></span>'+
+   '<span>'+esc(L.name)+'<br><span class="n">'+L.count+'</span></span>';
+  d.onclick=()=>{bpLane=(bpLane===L.name)?null:L.name;drawBlueprint();};
+  lanesEl.appendChild(d);});
+ const gArc=el('g');BP.arcEls={};
+ BP.edges.forEach(e=>{const a=bpBy[e.from],b=bpBy[e.to];if(!a||!b)return;
+  if(!bpVisible(a)||!bpVisible(b))return;
+  const dx=b.x-a.x,mx=(a.x+b.x)/2,
+   my=(a.y+b.y)/2-Math.min(90,Math.abs(dx)*0.34+Math.abs(b.y-a.y)*0.2);
+  const p=el('path',{d:'M'+a.x+','+a.y+' Q'+mx+','+my+' '+b.x+','+b.y,class:'bparc'});
+  p._e=e;gArc.appendChild(p);(BP.arcEls[e.from]=BP.arcEls[e.from]||[]).push(p);
+  (BP.arcEls[e.to]=BP.arcEls[e.to]||[]).push(p);});
+ svg.appendChild(gArc);
+ const gN=el('g');
+ BP.nodes.forEach(n=>{
+  const grp=el('g',{class:'bpn'+(bpVisible(n)?'':' faded')+(n===bpSel?' sel':'')});
+  n._el=grp;const col=VCOL[n.verdict]||'#9aa4b2',r=6.5;
+  const gl=el('g',{class:'gl',transform:'translate('+n.x+','+n.y+')'});
+  gl.appendChild(el('circle',{r:r*2.1,fill:col,opacity:.1}));
+  if(n.verdict==='kill'){
+   gl.appendChild(el('circle',{r:r,fill:'none',stroke:col,'stroke-width':1.6,
+    'stroke-dasharray':n.confident?'':'2 2'}));
+   gl.appendChild(el('path',{d:'M'+(-r*.5)+','+(-r*.5)+'L'+(r*.5)+','+(r*.5)+
+    'M'+(r*.5)+','+(-r*.5)+'L'+(-r*.5)+','+(r*.5),stroke:col,'stroke-width':1.6}));
+  }else if(n.verdict==='prior_art'){
+   gl.appendChild(el('path',{d:'M0,'+(-r)+'L'+r+',0L0,'+r+'L'+(-r)+',0Z',fill:col,opacity:.9}));
+  }else if(n.verdict==='correction'){
+   gl.appendChild(el('path',{d:'M0,'+(-r)+'L'+r+','+(r*.75)+'L'+(-r)+','+(r*.75)+'Z',fill:col,opacity:.9}));
+  }else if(n.verdict==='open'){
+   gl.appendChild(el('circle',{r:r*.85,fill:'none',stroke:col,'stroke-width':2}));
+  }else{
+   gl.appendChild(el('circle',{r:r*.9,fill:col,opacity:n.confident?1:.5,
+    stroke:n.confident?'none':col,'stroke-width':1,'stroke-dasharray':n.confident?'':'2 2'}));
+  }
+  gl.appendChild(el('circle',{r:r*1.9,class:'ring'}));
+  grp.appendChild(gl);
+  const lb=el('text',{x:n.x+11,y:n.y+3.5,class:'bplabel'});
+  lb.textContent=bpShort(n);grp.appendChild(lb);
+  grp.appendChild(el('rect',{x:n.x-13,y:n.y-13,width:26,height:26,class:'hitb'}));
+  grp.addEventListener('mouseenter',ev=>bpHover(n,ev));
+  grp.addEventListener('mousemove',ev=>bpTipMove(ev));
+  grp.addEventListener('mouseleave',()=>bpHover(null));
+  grp.addEventListener('click',()=>bpSelect(n));
+  gN.appendChild(grp);});
+ svg.appendChild(gN);
+ const c=BP.counts,vis=BP.nodes.filter(bpVisible).length;
+ document.getElementById('bp-sub').textContent=
+  vis+' of '+c.total+' facts · '+c.edges+' citations · '+BP.days.length+' days'+
+  (c.unsure?' · '+c.unsure+' unverified':'');
+ bpFilters();}
+function bpFilters(){const f=document.getElementById('bp-filters');if(f._built)return;f._built=1;
+ ['pass','kill','correction','prior_art','open'].forEach(v=>{
+  const c=document.createElement('span');c.className='bpchip';
+  c.innerHTML='<i class="dot" style="background:'+VCOL[v]+';color:'+VCOL[v]+'"></i>'+VNAME[v]+
+   ' <b style="color:'+VCOL[v]+'">'+(BP.counts[v]||0)+'</b>';
+  c.onclick=()=>{bpOffV[v]=!bpOffV[v];c.classList.toggle('off',!!bpOffV[v]);drawBlueprint();};
+  f.appendChild(c);});}
+function bpGoNewest(instant){const b=document.getElementById('bp-body');
+ b.scrollTo({left:b.scrollWidth,behavior:instant?'auto':'smooth'});}
+function bpHover(n,ev){
+ const tip=document.getElementById('bp-tip');
+ document.querySelectorAll('.bparc.hot,.bparc.hotback').forEach(p=>p.classList.remove('hot','hotback'));
+ document.querySelectorAll('.bpn.rel').forEach(g=>g.classList.remove('rel'));
+ if(!n){tip.classList.remove('on');return;}
+ (BP.arcEls[n.file]||[]).forEach(p=>p.classList.add(p._e.to===n.file?'hotback':'hot'));
+ n.cites.concat(n.cited_by).forEach(f=>{const o=bpBy[f];if(o&&o._el)o._el.classList.add('rel');});
+ tip.innerHTML='<div class="tt">'+esc(n.title||n.file)+'</div>'+
+  '<div class="tm" style="color:'+VCOL[n.verdict]+'">'+VNAME[n.verdict]+
+  (n.confident?'':' <span style="color:#f0883e">(unverified)</span>')+'</div>'+
+  '<div class="tm">'+n.date+' · '+n.origin.toUpperCase()+' · '+n.project+'</div>'+
+  '<div class="tm" style="margin-top:4px">↑ builds on '+n.cites.length+
+  ' · ↓ cited by '+n.cited_by.length+'</div>';
+ tip.classList.add('on');bpTipMove(ev);}
+function bpTipMove(ev){const t=document.getElementById('bp-tip');
+ let x=ev.clientX+16,y=ev.clientY+16;
+ if(x+340>innerWidth)x=ev.clientX-346;if(y+150>innerHeight)y=ev.clientY-160;
+ t.style.left=x+'px';t.style.top=y+'px';}
+function bpSelect(n){
+ if(bpSel&&bpSel._el)bpSel._el.classList.remove('sel');
+ bpSel=n;const d=document.getElementById('bp-detail');
+ if(!n){d.classList.remove('on');return;}
+ if(n._el)n._el.classList.add('sel');
+ const col=VCOL[n.verdict];
+ const links=(arr,dir)=>arr.length
+  ? arr.map(f=>'<div class="bpd-link" onclick="bpJump(\''+f+'\')">'+dir+' '+
+     esc((bpBy[f]||{}).title||f).slice(0,44)+'</div>').join('')
+  : '<div class="bpd-none">none</div>';
+ d.innerHTML='<div class="bpd-in scrolls">'+
+  '<div class="bpd-badge" style="color:'+col+';background:'+col+'1a;border:1px solid '+col+'55">'+
+   VNAME[n.verdict]+'</div>'+
+  '<div class="bpd-t">'+esc(n.title||n.file)+'</div>'+
+  '<div class="bpd-meta"><b>'+n.date+'</b> · origin <b>'+n.origin.toUpperCase()+
+   '</b> · <b>'+n.project+'</b><br>memory/facts/'+esc(n.file)+' · '+n.words+' words</div>'+
+  (n.confident
+    ? '<div class="bpd-meta" style="color:rgba(255,255,255,.28)">verdict source: '+VSRC[n.vsrc]+'</div>'
+    : '<div class="bpd-warn">⚠ This verdict was guessed from the body text, not stated. '+
+      VSRC[n.vsrc]+'. Treat it as unconfirmed.</div>')+
+  (n.status_line?'<div class="bpd-sec">its own status</div><div class="bpd-status">'+
+    esc(n.status_line)+'</div>':'')+
+  '<div class="bpd-sec">opening</div><div class="bpd-b">'+esc(n.snip)+'…</div>'+
+  '<div class="bpd-sec">builds on ('+n.cites.length+')</div>'+links(n.cites,'↑')+
+  '<div class="bpd-sec">cited by ('+n.cited_by.length+')</div>'+links(n.cited_by,'↓')+
+  '</div>';
+ d.classList.add('on');}
+function bpJump(f){const n=bpBy[f];if(!n)return;
+ bpOffV={};bpLane=null;bpQuery='';document.getElementById('bp-search').value='';
+ document.querySelectorAll('#bp-filters .bpchip').forEach(c=>c.classList.remove('off'));
+ drawBlueprint();bpSelect(n);
+ const b=document.getElementById('bp-body');
+ b.scrollTo({left:Math.max(0,n.x-b.clientWidth/2),top:Math.max(0,n.y-b.clientHeight/2),behavior:'smooth'});}
+function toggleBlueprint(){bpOn=!bpOn;
+ document.getElementById('bp').classList.toggle('on',bpOn);
+ document.getElementById('bp-btn').classList.toggle('on',bpOn);
+ if(bpOn){loadBlueprint();bpTimer=setInterval(loadBlueprint,30000);}
+ else{clearInterval(bpTimer);bpSel=null;bpSelect(null);bpHover(null);}}
+document.getElementById('bp-search').addEventListener('input',e=>{
+ bpQuery=e.target.value.trim().toLowerCase();drawBlueprint();});
+// drag anywhere on the timeline to pan it
+(function(){const b=document.getElementById('bp-body');let down=false,sx=0,sy=0,sl=0,st=0;
+ b.addEventListener('mousedown',e=>{if(e.target.closest('.bpn,.bplane'))return;
+  down=true;sx=e.clientX;sy=e.clientY;sl=b.scrollLeft;st=b.scrollTop;b.classList.add('drag');});
+ addEventListener('mousemove',e=>{if(!down)return;
+  b.scrollLeft=sl-(e.clientX-sx);b.scrollTop=st-(e.clientY-sy);});
+ addEventListener('mouseup',()=>{down=false;b.classList.remove('drag');});})();
+
+// ── boot ───────────────────────────────────────────────────────────────────
+async function loadHistory(){
+ try{const r=await fetch('/history');const j=await r.json();
+  if(!j.turns||!j.turns.length)return;
+  const d=document.createElement('div');d.className='divider';d.textContent='MEMORY RESTORED';
+  thread.appendChild(d);
+  for(const t of j.turns){
+   if(t.role==='you')add('you','YOU',esc(t.text));
+   else if(t.role==='alice')add('alice','ALICE',renderMD(t.text));
+   else add('odin','ODIN',renderMD(t.text));}
+  feed.scrollTop=feed.scrollHeight;}catch(e){}}
+function boot(){
+ bindDom();buildMatrix();buildCouncil();
+ resize();requestAnimationFrame(frame);requestAnimationFrame(sampleAmp);
+ // click a mind to address it — the same hit-boxes the engine draws with
+ cv.addEventListener('click',e=>{
+  const r=cv.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);
+  const mx=(e.clientX-r.left)*dpr,my=(e.clientY-r.top)*dpr;
+  if(Math.hypot(mx-HIT.ox,my-HIT.oy)<HIT.or*1.2){setMode('odin');return;}
+  if(Math.hypot(mx-HIT.ax,my-HIT.ay)<Math.max(HIT.ar*1.9,26))setMode('alice');});
+ cv.addEventListener('mousemove',e=>{
+  const r=cv.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);
+  mxD=(e.clientX-r.left)*dpr;myD=(e.clientY-r.top)*dpr;});
+ cv.addEventListener('mouseleave',()=>{mxD=myD=-1;});
+ document.querySelector('#stream .phead').addEventListener('dblclick',toggleFull);
+ document.addEventListener('fullscreenchange',()=>setTimeout(resize,80));
+ $('ptrack').addEventListener('click',e=>{
+  const id=e.target&&e.target.dataset&&e.target.dataset.id;if(id)wJumpTo(id,true);});
+ $('h-session').textContent=new Date().toTimeString().slice(0,5);
+ inp.addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+ document.addEventListener('keydown',onKeyDown);
+ const dt=$('drawer-tab');if(dt)dt.addEventListener('click',()=>toggleDrawer());
+ // every transport control gives the message box its focus back on the way out
+ document.querySelectorAll('#transport .tbtn,#modechip').forEach(
+   b=>b.addEventListener('click',()=>setTimeout(returnFocus,0)));
+ setInterval(turnMeter,250);
+ setInterval(councilTick,250);
+ wCount();budgetRender();loadHistory();pollMetrics();
+ inp.focus();}
+if(typeof document!=='undefined'&&document.readyState!=='loading')boot();
+else if(typeof document!=='undefined')document.addEventListener('DOMContentLoaded',boot);
+</script>
+</body>
+</html>

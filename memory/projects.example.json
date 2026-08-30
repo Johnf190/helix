@@ -1,0 +1,23 @@
+{
+  "_comment": [
+    "Optional. Copy to memory/projects.json to group your facts into named projects.",
+    "Helix derives everything else about a fact from the file itself — its date, its stated",
+    "verdict, and which other facts it cites. The only thing it cannot guess is which project",
+    "a file belongs to, so that is the one thing you declare here.",
+    "",
+    "'blueprint' drives the BLUEPRINT and MAP lenses: first keyword match wins, so order matters.",
+    "'memory'    drives the memory constellation: explicit file lists, anything unlisted -> MISC.",
+    "Delete this file entirely and everything simply lands in one GENERAL bucket."
+  ],
+  "blueprint": [
+    ["RESEARCH", "#4be3a0", ["experiment", "hypothesis", "result"]],
+    ["SOFTWARE", "#22d3ee", ["app", "tool", "build", "refactor"]],
+    ["WRITING",  "#a855f7", ["draft", "essay", "notes"]],
+    ["INFRA",    "#64748b", ["backup", "server", "network", "security"]],
+    ["METHOD",   "#c9a5ff", ["preference", "index", "operating", "decision"]]
+  ],
+  "memory": [
+    ["CORE",   "#22d3ee", ["00_INDEX.md"]],
+    ["METHOD", "#c9a5ff", ["07_operating_discipline.md"]]
+  ]
+}
