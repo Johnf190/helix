@@ -1,0 +1,8 @@
+{
+  "port": 7910,
+  "daemon": "http://127.0.0.1:7900",
+  "user_login": "-",
+  "token": "__TOKEN__",
+  "db": "studio.db",
+  "out_root": "__HOME__/helix/static/studio"
+}

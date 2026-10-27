@@ -1,13 +1,12 @@
-# Helix — direct dependencies. Generated from the versions this was actually developed
-# and run against; transitive deps are left to pip to resolve.
-#
-# Core (required)
-Flask==3.1.3
-requests==2.34.2
-claude-agent-sdk==0.2.122
-
-# Voice (optional — Helix runs headless-of-voice without these, see docs/06-voice.md)
-numpy==2.5.1
-soundfile==0.14.0
-kokoro-onnx==0.5.0          # text-to-speech, CPU
-faster-whisper==1.2.1       # speech-to-text, CPU
+# Core: chat, memory, interface, voice output
+flask>=3.0
+requests>=2.31
+numpy>=1.26
+claude-agent-sdk>=0.2
+onnxruntime>=1.17
+tokenizers>=0.19
+kokoro-onnx>=0.4
+soundfile>=0.12
+pytest>=8
+pillow>=10
+statsmodels>=0.14   # used by the nightly audit's tests

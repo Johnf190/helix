@@ -1,0 +1,12 @@
+{
+ "_note": "What the nightly heartbeat checks. Read-only probes only: TCP connects and real commands, never ICMP. A `host` may only be exactly 127.0.0.1 or localhost. Add your own as your setup grows (a mounted drive: kind mount_file; a service: kind command).",
+ "targets": [
+  {
+   "id": "helix-web",
+   "kind": "tcp",
+   "host": "127.0.0.1",
+   "port": 7777,
+   "timeout": 3
+  }
+ ]
+}

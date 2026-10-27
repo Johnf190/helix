@@ -1,0 +1,208 @@
+#!/usr/bin/python3 -I
+"""helix-vault-add: append ONE anchor line to the root-owned vault log.  (ORDER 19, drive copy ORDER 20)
+
+Runs as root via sudo. Input is argv NAMES only (none = all three). Root opens each ledger
+itself and measures it: n = newline-terminated lines, sha256 = hash of exactly those bytes.
+Refuses (and writes nothing) if any ledger lost or changed lines an earlier anchor recorded.
+Exit: 0 appended, 2 usage, 3 vault chain broken, 4 ledger rewritten/shrunk, 5 unsafe ledger,
+6 anchored locally, drive copy not updated (MISSING / UNSAFE / DIVERGED; the local line stands).
+After the local append it brings the root-owned copy on the odin drive up to the local log. That
+copy must be a byte prefix of the local log; it is only ever appended to, never repaired or created.
+"""
+import datetime
+import fcntl
+import hashlib
+import json
+import os
+import stat
+import sys
+
+LOG = "/var/lib/helix-vault/vault.log"
+LEDGERS = {
+    "facts_ledger": "__HOME__/helix/workspace/factgate/state/FACTS_LEDGER.jsonl",
+    "regate_ledger": "__HOME__/helix/workspace/seam/registry/REGATE_LEDGER.jsonl",
+    "catches": "__HOME__/helix/workspace/catches/CATCHES.jsonl",
+}
+OWNER_UID = 1000
+MAX_BYTES = 256 * 1024 * 1024
+DRIVE_LOG = "__VAULT_DRIVE__/helix-vault/vault.log"
+DRIVE_DIR = os.path.dirname(DRIVE_LOG)
+DRIVE_UID = 0
+
+
+def die(code, msg):
+    print("helix-vault-add: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def sha(b):
+    return hashlib.sha256(b).hexdigest()
+
+
+def prefix_end(data, n):
+    """Byte offset just after the n-th newline, or None if data has fewer than n lines."""
+    pos = 0
+    for _ in range(n):
+        i = data.find(b"\n", pos)
+        if i < 0:
+            return None
+        pos = i + 1
+    return pos
+
+
+def read_ledger(name):
+    """Read a user-writable ledger as root without being tricked. Returns its bytes."""
+    path = LEDGERS[name]
+    if os.path.realpath(path) != path:
+        die(5, f"{name}: path contains a symlink or does not resolve to itself: {path}")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NOCTTY | os.O_NONBLOCK)
+    except OSError as e:
+        die(5, f"{name}: cannot open safely: {e.strerror}")
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            die(5, f"{name}: not a regular file")
+        if st.st_uid != OWNER_UID:
+            die(5, f"{name}: owned by uid {st.st_uid}, expected {OWNER_UID}")
+        if st.st_size > MAX_BYTES:
+            die(5, f"{name}: larger than {MAX_BYTES} bytes")
+        chunks, total = [], 0
+        while True:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_BYTES:
+                die(5, f"{name}: grew past {MAX_BYTES} bytes while reading")
+            chunks.append(chunk)
+    finally:
+        os.close(fd)
+    return b"".join(chunks)
+
+
+def check_chain(raw):
+    """Verify the whole vault log. Returns the parsed records, or exits 3."""
+    if raw and not raw.endswith(b"\n"):
+        die(3, "vault log ends with a partial line")
+    records, prev = [], "genesis"
+    for seq, line in enumerate(raw.splitlines(keepends=True), 1):
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            die(3, f"vault chain broken at seq {seq}: not valid JSON")
+        if not isinstance(rec, dict) or not isinstance(rec.get("entries"), dict):
+            die(3, f"vault chain broken at seq {seq}: not an anchor record")
+        for e in rec["entries"].values():
+            if not (isinstance(e, dict) and type(e.get("n")) is int and e["n"] >= 0
+                    and isinstance(e.get("sha256"), str)):
+                die(3, f"vault chain broken at seq {seq}: malformed entry")
+        if rec.get("seq") != seq:
+            die(3, f"vault chain broken at seq {seq}: seq is {rec.get('seq')!r}")
+        if rec.get("prev") != prev:
+            die(3, f"vault chain broken at seq {seq}: prev does not match line {seq - 1}")
+        records.append(rec)
+        prev = sha(line)
+    return records, prev
+
+
+def mirror(local):
+    """Bring the drive copy up to `local` (the whole local log). Returns (ok, status text)."""
+    if os.path.realpath(DRIVE_LOG) != DRIVE_LOG:
+        return False, "UNSAFE (path contains a symlink)"
+    fds = []
+    try:  # the folder is opened, not just looked at, so it cannot be swapped before the file is opened
+        for what, path, flags in (("folder", DRIVE_DIR, os.O_RDONLY | os.O_DIRECTORY),
+                                  ("file", os.path.basename(DRIVE_LOG), os.O_RDWR | os.O_APPEND | os.O_NONBLOCK)):
+            fds.append(os.open(path, flags | os.O_NOFOLLOW | os.O_NOCTTY, dir_fd=fds[0] if fds else None))
+            st = os.fstat(fds[-1])
+            if st.st_uid != DRIVE_UID or st.st_mode & 0o022:
+                return False, (f"UNSAFE ({what} owned by uid {st.st_uid}, mode {st.st_mode & 0o7777:o}; "
+                               f"must be uid {DRIVE_UID} and not group/world-writable)")
+        fd = fds[1]
+        if not stat.S_ISREG(st.st_mode):
+            return False, "UNSAFE (not a regular file)"
+        if st.st_size > MAX_BYTES:
+            return False, f"UNSAFE (larger than {MAX_BYTES} bytes)"
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        chunks, total = [], 0
+        while True:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_BYTES:
+                return False, f"UNSAFE (grew past {MAX_BYTES} bytes while reading)"
+            chunks.append(chunk)
+        data = b"".join(chunks)
+        if not local.startswith(data):  # never repaired: the drive copy is only ever appended to
+            i = next((k for k, (x, y) in enumerate(zip(data, local)) if x != y), min(len(data), len(local)))
+            return False, "DIVERGED at line %d" % (local.count(b"\n", 0, i) + 1)
+        tail = local[len(data):]
+        while tail:
+            tail = tail[os.write(fd, tail):]
+        os.fsync(fd)
+        n, missed = local.count(b"\n"), local.count(b"\n", len(data)) - 1  # missed: besides this add's line
+        return True, f"CAUGHT UP (+{missed} lines, {n})" if missed > 0 else f"OK ({n} lines)"
+    except FileNotFoundError:
+        return False, "MISSING"
+    except OSError as e:
+        return False, f"UNSAFE ({e.strerror})"
+    finally:
+        for fd in fds:
+            os.close(fd)
+
+
+def main(argv):
+    names = argv or list(LEDGERS)
+    for a in names:
+        if a not in LEDGERS:
+            die(2, f"unknown ledger name {a!r}; allowed: {', '.join(LEDGERS)} (names only, no values)")
+    if len(set(names)) != len(names):
+        die(2, "duplicate ledger name")
+
+    try:
+        wfd = os.open(LOG, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NOCTTY)
+    except OSError as e:
+        die(3, f"cannot open vault log {LOG}: {e.strerror}")
+    with os.fdopen(wfd, "ab") as out:
+        fcntl.flock(out.fileno(), fcntl.LOCK_EX)
+        with open(LOG, "rb") as f:
+            raw = f.read()
+        records, prev = check_chain(raw)
+
+        entries = {}
+        for name in names:
+            data = read_ledger(name)
+            end = data.rfind(b"\n") + 1  # a trailing partial line is not counted and not hashed
+            n = data.count(b"\n", 0, end)
+            for rec in reversed(records):  # most recent earlier anchor for this name
+                old = rec["entries"].get(name)
+                if old is None:
+                    continue
+                cut = prefix_end(data, old["n"])
+                if cut is None:
+                    die(4, f"{name}: SHRUNK since seq {rec['seq']} (had {old['n']} lines, now {n})")
+                if sha(data[:cut]) != old["sha256"]:
+                    die(4, f"{name}: REWRITTEN since seq {rec['seq']} (first {old['n']} lines differ)")
+                break
+            entries[name] = {"n": n, "sha256": sha(data[:end])}
+
+        utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rec = {"entries": entries, "prev": prev, "seq": len(records) + 1, "utc": utc}
+        line = json.dumps(rec, sort_keys=True, separators=(",", ":"))
+        out.write((line + "\n").encode())
+        out.flush()
+        os.fsync(out.fileno())
+        ok, drive = mirror(raw + (line + "\n").encode())  # still under the local lock
+    print(line)
+    print("drive: " + drive)
+    if not ok:
+        print(f"helix-vault-add: anchored locally as seq {rec['seq']}; drive copy not updated: {drive}",
+              file=sys.stderr)
+        return 6
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

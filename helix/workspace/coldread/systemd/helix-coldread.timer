@@ -1,0 +1,11 @@
+# Order 46/46b (item 11): the cold read, the 1st of every month at 10:00 (clear of the 03:30-05:30
+# nightly window and the evening builds). A missed month runs at next boot.
+[Unit]
+Description=Helix cold read, monthly on the 1st at 10:00
+
+[Timer]
+OnCalendar=*-*-01 10:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

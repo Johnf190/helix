@@ -1,0 +1,8 @@
+# Speech-to-text (talk to Helix through the microphone)
+faster-whisper>=1.0
+# Local image generation (render_daemon.py / studio). Needs an NVIDIA GPU with 8 GB+ for comfort.
+torch
+diffusers
+transformers
+pillow
+spandrel

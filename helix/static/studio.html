@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Helix Studio</title>
+<style>
+/* Design tokens lifted verbatim from Alice's approved mockup (static/studio_mockup.html),
+   which is the design the user signed off on. Vermilion is the only saturated colour on the page
+   and it does exactly two jobs: the primary action, and the mark on an image you rejected. */
+:root{
+  --bg-base:#121418; --bg-surface:#1E2228; --bg-surface-hover:#2A2F36;
+  --border:rgba(255,255,255,.08);
+  --text-main:#F0F4F8; --text-muted:#8A96A3;
+  --accent:#FF5A36; --accent-hover:#FF7052;
+  --success:#00D084; --info:#0E6BA8;
+  --ui:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg-base);color:var(--text-main);font:14px/1.5 var(--ui);
+     display:grid;grid-template-columns:216px 1fr 300px;grid-template-rows:100%}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ── sidebar ───────────────────────────────────────────────────────────── */
+.sidebar{background:var(--bg-surface);border-right:1px solid var(--border);
+         display:flex;flex-direction:column;overflow:hidden}
+.brand{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px}
+.brand b{font-size:14px;letter-spacing:.02em}
+.brand .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.brand a{margin-left:auto;color:var(--text-muted);text-decoration:none;font-size:12px}
+.brand a:hover{color:var(--text-main)}
+.renderer{padding:9px 18px;font-size:11px;color:var(--text-muted);border-bottom:1px solid var(--border);
+           display:flex;align-items:center;gap:7px}
+.renderer::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--text-muted);flex:0 0 6px}
+.renderer.up::before{background:var(--success)}
+.renderer.down::before{background:#ff6b6b}
+.renderer.down{color:#ff6b6b}
+.nav-section{padding:16px 12px 6px;font:600 10px/1 var(--ui);letter-spacing:.16em;
+             text-transform:uppercase;color:var(--text-muted)}
+.nav-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+          padding:9px 12px;margin:1px 8px;border:0;border-radius:7px;background:transparent;
+          color:var(--text-muted);font:14px var(--ui);cursor:pointer;transition:background .12s,color .12s}
+.nav-item:hover{background:var(--bg-surface-hover);color:var(--text-main)}
+.nav-item.active{background:var(--bg-surface-hover);color:var(--text-main)}
+.nav-item .count{margin-left:auto;font:11px var(--mono);color:var(--text-muted)}
+.queue{flex:1;overflow-y:auto;padding:4px 8px 12px;border-top:1px solid var(--border);margin-top:12px}
+.queue-item{padding:9px 10px;border-radius:7px;cursor:pointer;transition:background .12s}
+.queue-item:hover{background:var(--bg-surface-hover)}
+.queue-item .row{display:flex;align-items:center;gap:8px}
+.queue-item .jid{font:11px var(--mono);color:var(--text-muted)}
+.queue-item .txt{font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;
+                 white-space:nowrap;margin-top:3px}
+.badge{margin-left:auto;font:600 9px/1 var(--ui);letter-spacing:.1em;text-transform:uppercase;
+       padding:3px 6px;border-radius:4px;border:1px solid var(--border);color:var(--text-muted)}
+.badge.running{color:var(--accent);border-color:var(--accent)}
+.badge.done{color:var(--success);border-color:rgba(0,208,132,.4)}
+.badge.failed{color:#ff6b6b;border-color:rgba(255,107,107,.4)}
+
+/* ── main ──────────────────────────────────────────────────────────────── */
+.main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.bar{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border)}
+.bar h1{margin:0;font-size:14px;font-weight:600}
+.bar .sub{font:12px var(--mono);color:var(--text-muted)}
+.bar .sp{flex:1}
+.stage{flex:1;overflow-y:auto;padding:24px}
+.empty{color:var(--text-muted);text-align:center;padding:14vh 20px}
+.empty b{display:block;color:var(--text-main);font-size:15px;margin-bottom:6px}
+
+/* canvas view */
+.canvas{max-width:900px;margin:0 auto}
+.canvas img{width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--border);background:#000}
+.tools{display:flex;gap:8px;margin-top:14px;justify-content:center;flex-wrap:wrap}
+.tool-btn{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-muted);
+          border-radius:7px;padding:8px 14px;font:13px var(--ui);cursor:pointer;transition:.12s}
+.tool-btn:hover{background:var(--bg-surface-hover);color:var(--text-main)}
+
+/* review feed — the signature. A rejected image carries a vermilion edge; a passed one
+   carries nothing. Scrolling the feed, your own verdicts read as a vertical rhythm. */
+.feed{max-width:860px;margin:0 auto}
+.shot{margin:0 0 30px;background:var(--bg-surface);border:1px solid var(--border);
+      border-left:3px solid transparent;border-radius:10px;overflow:hidden;transition:border-color .15s}
+.shot.rejected{border-left-color:var(--accent)}
+/* Cap the image so the shot AND its comment box fit one screen. A 512px render stretched to
+   full width pushed the comment off-screen and made comparing a series impossible — you judge
+   by scrolling between images, so each one has to be takeable in at a glance. */
+.shot img{display:block;width:100%;height:auto;max-height:58vh;object-fit:contain;
+          background:transparent}   /* letterbox shows the panel, not a black box */
+.shot .meta{display:flex;align-items:center;gap:10px;padding:9px 13px;border-top:1px solid var(--border)}
+.shot .idx{font:600 12px var(--mono)}
+.shot .verdict{margin-left:auto;font:600 9px/1 var(--ui);letter-spacing:.12em;text-transform:uppercase;
+               color:var(--text-muted)}
+.shot .act{background:transparent;border:1px solid var(--border);color:var(--text-muted);
+           border-radius:6px;padding:4px 9px;font:12px var(--ui);cursor:pointer;text-decoration:none;
+           transition:.12s}
+.shot .act:hover{background:var(--bg-surface-hover);color:var(--text-main)}
+/* Deleting is irreversible, so the button asks once. No modal — the confirm happens in place. */
+.shot .act.arm{border-color:#ff6b6b;color:#ff6b6b}
+.shot.rejected .verdict{color:var(--accent)}
+.shot textarea{width:100%;border:0;border-top:1px solid var(--border);background:transparent;
+               color:var(--text-main);padding:11px 13px;font:14px/1.5 var(--ui);resize:vertical;
+               min-height:46px;outline:none;display:block}
+.shot textarea::placeholder{color:#5c6773}
+.shot textarea:focus{background:#171b21}
+
+/* ── inspector ─────────────────────────────────────────────────────────── */
+.inspector{background:var(--bg-surface);border-left:1px solid var(--border);
+           display:flex;flex-direction:column;overflow-y:auto}
+.panel-header{padding:16px 18px;border-bottom:1px solid var(--border);font:600 10px/1 var(--ui);
+              letter-spacing:.16em;text-transform:uppercase;color:var(--text-muted)}
+.inspector-body{padding:16px 18px;display:flex;flex-direction:column;gap:15px}
+.form-group{display:flex;flex-direction:column;gap:6px}
+.form-label{font:600 10px/1 var(--ui);letter-spacing:.13em;text-transform:uppercase;color:var(--text-muted)}
+textarea.field,input.field,select.field{background:var(--bg-base);border:1px solid var(--border);
+       color:var(--text-main);border-radius:7px;padding:9px 11px;font:14px var(--ui);outline:none;width:100%}
+textarea.field{resize:vertical;min-height:88px;line-height:1.5}
+input.field,select.field{font-family:var(--mono);font-size:13px}
+.field:focus{border-color:var(--accent)}
+.field::placeholder{color:#5c6773}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.toggle-row{display:flex;align-items:flex-start;gap:11px;padding-top:2px}
+.switch{position:relative;flex:0 0 34px;height:19px;background:var(--bg-base);border:1px solid var(--border);
+        border-radius:19px;cursor:pointer;transition:background .15s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+               background:var(--text-muted);transition:transform .15s,background .15s}
+.switch.on{background:rgba(255,90,54,.22);border-color:var(--accent)}
+.switch.on::after{transform:translateX(15px);background:var(--accent)}
+.toggle-label{font-size:13px}
+.toggle-desc{font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.45}
+.generate-btn{margin-top:4px;background:var(--accent);color:#1a0800;border:0;border-radius:8px;
+              padding:12px;font:600 14px var(--ui);cursor:pointer;transition:background .12s}
+.generate-btn:hover:not([disabled]){background:var(--accent-hover)}
+.generate-btn[disabled]{background:var(--bg-surface-hover);color:var(--text-muted);cursor:default}
+.note{font-size:11px;color:var(--text-muted);line-height:1.5}
+@media (max-width:1100px){
+  body{grid-template-columns:1fr}
+  .sidebar,.inspector{display:none}
+}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span><b>Helix Studio</b><a href="/static/index_v6.html">← Helix</a></div>
+
+  <div class="renderer" id="renderer">checking renderer…</div>
+
+  <div class="nav-section">Workspace</div>
+  <button class="nav-item active" id="nav-generate" data-view="generate">Generate</button>
+  <button class="nav-item" id="nav-review" data-view="review">Review<span class="count" id="review-count"></span></button>
+
+  <div class="nav-section">Live queue</div>
+  <div class="queue" id="queue"></div>
+</aside>
+
+<main class="main">
+  <div class="bar">
+    <h1 id="title">Generate</h1>
+    <span class="sub" id="subtitle"></span>
+    <span class="sp"></span>
+    <button class="tool-btn" id="go" hidden>Nothing to regenerate</button>
+  </div>
+  <div class="stage" id="stage"></div>
+</main>
+
+<aside class="inspector">
+  <div class="panel-header">Generation</div>
+  <div class="inspector-body">
+    <div class="form-group">
+      <label class="form-label" for="prompt">Prompt</label>
+      <textarea class="field" id="prompt" placeholder="Describe the image…"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="negative">Exclude</label>
+      <textarea class="field" id="negative" style="min-height:52px" placeholder="What to leave out…"></textarea>
+    </div>
+    <div class="two">
+      <div class="form-group">
+        <label class="form-label" for="model">Model</label>
+        <select class="field" id="model">
+          <option value="sd15">sd15 · fast</option>
+          <option value="sdxl">sdxl · better</option>
+          <option value="flux">flux · sharpest</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="aspect">Aspect</label>
+        <select class="field" id="aspect">
+          <option value="square">Square</option>
+          <option value="portrait">Portrait</option>
+          <option value="landscape">Landscape</option>
+        </select>
+      </div>
+    </div>
+    <div class="two">
+      <div class="form-group">
+        <label class="form-label" for="seed">Seed</label>
+        <input class="field" id="seed" placeholder="Random" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="count">Images</label>
+        <input class="field" id="count" value="4" inputmode="numeric">
+      </div>
+    </div>
+    <div class="toggle-row">
+      <div class="switch" id="director" role="switch" aria-checked="false" tabindex="0"></div>
+      <div>
+        <div class="toggle-label">Art director</div>
+        <div class="toggle-desc">Odin critiques each image and re-renders before you see it.</div>
+      </div>
+    </div>
+    <button class="generate-btn" id="generate">Generate</button>
+    <p class="note" id="hint">Images land in the queue. Open Review to judge them.</p>
+  </div>
+</aside>
+
+<script>
+const qs = new URLSearchParams(location.search);
+const K = qs.get('k') || '';
+const api = p => '/studio/api' + p + (K ? (p.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(K) : '');
+const $ = id => document.getElementById(id);
+const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const SIZES = {sd15:[512,512], sdxl:[768,768], flux:[768,768]};
+let view = 'review', job = null, notes = {}, jobs = [];
+
+/* ── generate ─────────────────────────────────────────────────────────── */
+$('director').addEventListener('click', e => {
+  const on = e.currentTarget.classList.toggle('on');
+  e.currentTarget.setAttribute('aria-checked', on);
+});
+$('director').addEventListener('keydown', e => {
+  if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.currentTarget.click(); }
+});
+
+$('generate').addEventListener('click', async () => {
+  const prompt = $('prompt').value.trim();
+  if (!prompt) { $('hint').textContent = 'Write a prompt first.'; $('prompt').focus(); return; }
+  const model = $('model').value;
+  let [w, h] = SIZES[model];
+  if ($('aspect').value === 'portrait')  h = Math.round(h * 4 / 3);
+  if ($('aspect').value === 'landscape') w = Math.round(w * 4 / 3);
+
+  if (rendererUp === false){
+    $('hint').textContent = 'The renderer is offline, so nothing can be generated yet. '
+      + 'Start it with:  ~/render_env/bin/python ~/helix/render_daemon.py';
+    return;
+  }
+  const btn = $('generate'); btn.disabled = true; btn.textContent = 'Queuing…';
+  const n = Math.max(1, Math.min(8, parseInt($('count').value, 10) || 1));
+  try {
+    // ONE job holding the whole series, not n jobs of one image. The executor already takes
+    // params.count. Submitting n separate jobs meant the review feed could only ever show one
+    // picture at a time, which defeats the point of judging a series side by side.
+    const body = {submitter: 'user', kind: 'image', prompt, model,
+      negative: $('negative').value.trim() || null,
+      seed: $('seed').value.trim() ? parseInt($('seed').value, 10) : null,
+      params: {width: w, height: h, count: n,
+               art_director: $('director').classList.contains('on')}};
+    const r = await fetch(api('/job'), {method:'POST', headers:{'Content-Type':'application/json'},
+                                        body: JSON.stringify(body)});
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    $('hint').textContent = `Queued a series of ${n}. Open Review when it finishes.`;
+    loadQueue();
+  } catch (e) {
+    $('hint').textContent = 'Could not queue: ' + e;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Generate';
+  }
+});
+
+/* ── queue ────────────────────────────────────────────────────────────── */
+let rendererUp = null;
+async function checkRenderer(){
+  try {
+    const j = await (await fetch(api('/daemon'))).json();
+    rendererUp = !!j.up;
+  } catch { rendererUp = false; }
+  const el = $('renderer');
+  el.className = 'renderer ' + (rendererUp ? 'up' : 'down');
+  el.textContent = rendererUp ? 'Renderer ready' : 'Renderer offline — start render_daemon.py';
+  const g = $('generate');
+  g.disabled = !rendererUp;
+  g.textContent = rendererUp ? 'Generate' : 'Renderer offline';
+}
+
+async function loadQueue(){
+  try {
+    const r = await fetch(api('/queue'));
+    jobs = ((await r.json()).jobs || []).slice().reverse();
+  } catch { return; }
+  // A finished series whose images have all been deleted is nothing to look at, so it leaves
+  // the list. The job ROW still exists — children point at it via parent_job_id and lineage
+  // has to keep working — it just stops taking up space. A queued or running job legitimately
+  // has no images yet, and a failed one is worth seeing, so both stay.
+  const visible = jobs.filter(j => !(j.status === 'done' && !(j.outputs||[]).length));
+  $('queue').innerHTML = visible.slice(0, 40).map(j => `
+    <div class="queue-item" data-id="${j.id}">
+      <div class="row"><span class="jid">#${j.id}</span>
+        <span class="badge ${esc(j.status)}">${esc(j.status)}</span></div>
+      <div class="txt">${esc((j.prompt||'—').slice(0,60))}</div>
+    </div>`).join('') || '<div class="txt" style="padding:10px 12px">Nothing queued yet.</div>';
+  $('queue').querySelectorAll('.queue-item').forEach(el =>
+    el.addEventListener('click', () => openJob(+el.dataset.id)));
+  const done = visible.filter(j => j.status === 'done' && (j.outputs||[]).length);
+  $('review-count').textContent = done.length ? done.length : '';
+}
+
+/* ── review ───────────────────────────────────────────────────────────── */
+function commented(){ return Object.keys(notes).filter(i => (notes[i]||'').trim()); }
+
+function paintGo(){
+  const n = commented().length, total = (job?.outputs || []).length;
+  const b = $('go');
+  b.hidden = view !== 'review' || !total;
+  b.disabled = !n;
+  b.textContent = n ? `Regenerate ${n} of ${total}` : 'Nothing to regenerate';
+  b.style.background = n ? 'var(--accent)' : '';
+  b.style.color = n ? '#1a0800' : '';
+  b.style.borderColor = n ? 'var(--accent)' : '';
+}
+
+function paintShot(i){
+  const has = (notes[i]||'').trim();
+  document.getElementById('s'+i).classList.toggle('rejected', !!has);
+  document.getElementById('v'+i).textContent = has ? 'will regenerate' : 'passed';
+}
+
+function renderReview(){
+  $('title').textContent = 'Review';
+  $('subtitle').textContent = job ? `job #${job.id} · ${(job.outputs||[]).length} images` : '';
+  if (!job || !(job.outputs||[]).length){
+    $('stage').innerHTML = '<div class="empty"><b>Nothing to review yet</b>Generate a series, then come back and judge it.</div>';
+    paintGo(); return;
+  }
+  $('stage').innerHTML = '<div class="feed">' + job.outputs.map((src,i) => `
+    <figure class="shot" id="s${i}">
+      <img src="${esc(src)}" alt="Image ${i+1}" loading="lazy">
+      <div class="meta"><span class="idx">#${i+1}</span><span class="verdict" id="v${i}">passed</span>
+        <a class="act" href="${esc(src)}" download="helix-job${job.id}-${i+1}.png"
+           title="Save this image">Download</a>
+        <button class="act" data-del="${i}" title="Delete this image for good">Delete</button></div>
+      <textarea id="t${i}" data-i="${i}" placeholder="What should change? Leave blank to keep it."></textarea>
+    </figure>`).join('') + '</div>';
+  $('stage').querySelectorAll('textarea').forEach(t => {
+    t.value = notes[t.dataset.i] || '';
+    t.addEventListener('input', e => { notes[e.target.dataset.i] = e.target.value;
+                                       paintShot(e.target.dataset.i); paintGo(); });
+  });
+  $('stage').querySelectorAll('[data-del]').forEach(b =>
+    b.addEventListener('click', () => armDelete(b)));
+  job.outputs.forEach((_,i) => paintShot(i));
+  paintGo();
+}
+
+/* One click arms, the second deletes. Deleting shifts every later image down one, so the
+   series is re-fetched from the server afterwards rather than patched locally — the server is
+   the only thing that knows which comment now belongs to which picture. */
+let armed = null;
+function armDelete(btn){
+  if (armed !== btn){
+    if (armed) { armed.classList.remove('arm'); armed.textContent = 'Delete'; }
+    armed = btn; btn.classList.add('arm'); btn.textContent = 'Delete for good?';
+    setTimeout(() => { if (armed === btn){ btn.classList.remove('arm'); btn.textContent = 'Delete'; armed = null; } }, 4000);
+    return;
+  }
+  armed = null;
+  const idx = +btn.dataset.del;
+  btn.textContent = 'Deleting…'; btn.disabled = true;
+  fetch(api(`/job/${job.id}/output/${idx}`), {method:'DELETE'})
+    .then(r => r.json())
+    .then(j => {
+      if (!j.ok) throw new Error(j.error || 'failed');
+      $('hint').textContent = 'Image deleted.';
+      notes = {};
+      return openJob(job.id).then(loadQueue).then(() => {
+        if (job && !(job.outputs||[]).length){
+          const next = jobs.find(j => j.status === 'done' && (j.outputs||[]).length);
+          if (next) return openJob(next.id);
+          $('hint').textContent = 'That series is empty now. Generate another.';
+        }
+      });
+    })
+    .catch(e => { $('hint').textContent = 'Could not delete: ' + e;
+                  btn.disabled = false; btn.textContent = 'Delete'; });
+}
+
+function renderGenerate(){
+  $('title').textContent = 'Generate';
+  $('subtitle').textContent = job ? `job #${job.id}` : '';
+  $('go').hidden = true;
+  const src = job && (job.outputs||[])[0];
+  $('stage').innerHTML = src
+    ? `<div class="canvas"><img src="${esc(src)}" alt="Latest image">
+         <div class="tools">
+           <button class="tool-btn" onclick="setView('review')">Review this series</button>
+         </div></div>`
+    : '<div class="empty"><b>Nothing rendered yet</b>Write a prompt on the right and press Generate.</div>';
+}
+
+function paint(){ view === 'review' ? renderReview() : renderGenerate(); }
+
+function setView(v){
+  view = v;
+  document.querySelectorAll('.nav-item').forEach(n =>
+    n.classList.toggle('active', n.dataset.view === v));
+  paint();
+}
+document.querySelectorAll('.nav-item').forEach(n =>
+  n.addEventListener('click', () => setView(n.dataset.view)));
+
+async function openJob(id){
+  try {
+    const r = await fetch(api('/job/' + id));
+    const j = await r.json();
+    job = j.job || j; notes = {};
+    (job.notes || []).forEach(n => notes[n.output_idx] = n.comment);
+    paint();
+  } catch {}
+}
+
+$('go').addEventListener('click', async () => {
+  const b = $('go'); b.disabled = true; b.textContent = 'Queuing…';
+  try {
+    const body = commented().map(i => ({output_idx: +i, comment: notes[i].trim()}));
+    const r = await fetch(api(`/job/${job.id}/regenerate`), {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({notes: body})});
+    const j = await r.json();
+    $('hint').textContent = j.ok
+      ? `Queued ${j.created} regeneration${j.created===1?'':'s'}.`
+      : `Failed: ${j.error || 'unknown'}`;
+    b.textContent = j.ok ? 'Queued' : 'Retry';
+    loadQueue();
+  } catch (e) { $('hint').textContent = 'Failed: ' + e; paintGo(); }
+});
+
+async function boot(){
+  await loadQueue();
+  const jid = qs.get('job');
+  if (jid) { await openJob(+jid); }
+  else {
+    try {
+      const j = await (await fetch(api('/queue/latest_done'))).json();
+      if (j.job) { job = j.job; notes = {}; (job.notes||[]).forEach(n => notes[n.output_idx] = n.comment); }
+    } catch {}
+  }
+  await checkRenderer();
+  setView(job && (job.outputs||[]).length ? 'review' : 'generate');
+  setInterval(loadQueue, 3000);
+  setInterval(checkRenderer, 5000);
+}
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Order 52 (item 21): the proposal engine. One cold session reads the harvested failure record and
+# proposes ≤ 5 upgrades into workspace/proposals/PROPOSALS.jsonl. It never acts: the user decides.
+# A week with < 3 new (never-cited) events records SKIPPED (no new evidence) and spends nothing.
+# Env as coldread's service: the subscription's config dir, never an API key.
+[Unit]
+Description=Helix proposal engine: one cold session proposes upgrades from the failure record (weekly)
+
+[Service]
+Type=oneshot
+Environment=CLAUDE_CONFIG_DIR=%h/claude/config
+UnsetEnvironment=ANTHROPIC_API_KEY
+StandardInput=null
+ExecStart=/usr/bin/python3 %h/helix/workspace/proposals/propose.py draft
+TimeoutStartSec=1h
+Nice=10

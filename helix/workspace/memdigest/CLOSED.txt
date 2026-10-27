@@ -1,0 +1,1 @@
+# category | decision   (one per line; a closed category is listed by name only in the per-turn index)

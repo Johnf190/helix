@@ -1,0 +1,10 @@
+[
+ {
+  "name": "nightly audit",
+  "prompt": "Run the nightly audit: `python3 ~/helix/workspace/seam/nightly.py`. Report every line it prints, verbatim and in order. Do not interpret, do not reassure, do not add work. If a prediction scored, say which entry and what the number was, including when it failed. If any line carries a red marker, say so first. A heartbeat line naming a target DOWN is reported, never fixed. If the script errors, report the error and stop.",
+  "every_minutes": null,
+  "at": "04:30",
+  "id": "nightly000001",
+  "enabled": true
+ }
+]

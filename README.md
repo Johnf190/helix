@@ -1,95 +1,101 @@
 # HELIX
 
-**A local AI workbench with a memory that survives the session, and a second mind whose job is to
-prove the first one wrong.**
+**A personal AI assistant that runs on your own Linux machine, keeps a memory between sessions,
+and has guard rails so it cannot quietly rewrite that memory or the system it runs in.**
 
-Helix is a single Flask app you run on your own machine. It orchestrates CLI tools you're already
-signed into — it is not a wrapper around an API key, and nothing you say leaves your machine except
-the model call itself.
+Helix is a local Flask app (port 7777, bound to 127.0.0.1). You talk to **Odin** (Claude, through
+your own Claude Code subscription) and, if you like, a second seat **Alice** (Gemini) whose job is
+to find what Odin got wrong. It is a personal project, built with Claude Code by someone who does
+not write code by hand, and it is still under construction.
 
 ---
 
 ## The problem it was built for
 
-A chat assistant forgets when the window closes. You re-explain your project every session. It
-re-derives conclusions you already falsified last week. The record of what you actually know lives
-nowhere but your head and a scroll of dead transcripts.
+A chat assistant forgets when the window closes. You re-explain your project every session, and it
+repeats conclusions you already threw out last week. Helix keeps the record on disk, where you can
+read it, correct it and back it up yourself.
 
-Helix's answer is deliberately unclever: **one fact per file, on disk, in markdown.** Every turn
-loads your operating charter in full, plus the newest facts verbatim, plus a name-and-first-line
-index of everything else. No embeddings, no similarity search deciding for you what matters,
-nothing that can silently drop what it scored low. You can read it, grep it, diff it, `git` it, and
-delete one wrong belief without touching the other two hundred.
+## Memory
 
-## The second idea: two minds, not one
+- **One fact per file**, in markdown, under `memory/facts/`. Saving a new fact writes a new file,
+  so no single edit can wipe the record.
+- **A fact ledger** (`workspace/factgate/`) records the hash of every fact. Any change to a fact
+  that did not go through the recorded path shows up as off-ledger, and the gate refuses.
+- **Retrieval**: each turn gets the charter, the newest facts in full, and the facts most relevant
+  to the question (hybrid BM25 + a small local embedding model, `workspace/memretrieve/`).
+- **A per-turn index grouped by category** (`workspace/memdigest/`): one line per category instead
+  of one per fact, with a mechanical digest file for each category. Nothing in the digests is
+  written by a model, so nothing can be summarised wrong. This keeps the per-turn context from
+  growing without limit as the fact base grows.
+- **Retirements**: a newer fact can retire a passage in an older one, so a stale line is marked
+  rather than silently repeated.
 
-**ODIN** (Claude) executes — writes and runs code, edits files, drives the shell.
-**ALICE** (Gemini) audits — her explicit brief is to break what ODIN built.
+## Guard rails
 
-They share the same conversation and the same `memory/facts/`. They are not two assistants; they
-are opposite poles of one system. An assistant that agrees with its own last answer is worth less
-than one with a colleague paid to falsify it.
+An assistant with a shell can also do damage, so:
 
-Behind them, a **council** of six specialist models on OpenRouter, convened on a keypress, each
-blind to the others. Their disagreements are the information. And a standing rule:
-**council output is opinion, not evidence** — nothing becomes a fact until a real test says so.
-New memories are stamped `status: unverified` for exactly that reason.
+- **A hook checks every tool call** before it runs (`factgate_hook.py`) and refuses writes to the
+  memory, the ledgers and the guards themselves. Every refusal is logged.
+- **A write wall**: the assistant's shell runs inside a bubblewrap sandbox where the guarded files
+  are mounted read-only (`wall_exec.sh`). The kernel refuses the write even if the hook missed it.
+- **An append-only vault** (`vault/`) anchors a hash chain of the record, with an optional copy on
+  a separate drive.
 
-## The third idea: show the work
+## Changing Helix: build orders
 
-The right-hand panel streams **every command, file write and tool call of the live turn, in order,
-with its real output**. You never have to take the summary's word for what it did.
+The assistant does not edit the running app from inside a conversation. It writes a **build
+order** with a hard scope fence (`build_orders/`). A separate, fresh Claude Code session executes
+it; tests must pass, and the builder's report is checked against witnesses it did not write
+(`workspace/reportcheck/`) before anything goes live.
 
-The design rule the whole interface obeys: *if something is lit, something is genuinely running.*
-Nothing loops, breathes or sweeps for decoration.
+## Checking itself
+
+- **A nightly audit** (`workspace/seam/nightly.py`): broken references, the fact ledger, the vault,
+  disks and services, planted canaries that the gates must catch, and replays of earlier
+  measurements. It reports; it never fixes anything on its own.
+- **Predictions are written down before a test runs** (`workspace/regate/`), and scored afterwards,
+  so a result cannot be explained after the fact.
+
+## Also in the box
+
+- Voice in and out, offline (Vosk speech-to-text, Kokoro text-to-speech; models downloaded
+  separately).
+- A council of open models through OpenRouter, convened on demand. Council output is treated as
+  opinion, not evidence.
+- A scheduler, a phone view over Tailscale, and an image-generation studio (optional, needs a GPU).
 
 ---
 
-## Quickstart
+## What you need
 
-```bash
-git clone https://github.com/Johnf190/helix.git
-cd helix
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-./start_helix.sh
+- Linux (built on Ubuntu/Xubuntu 24.04). A normal desktop or laptop is enough; no GPU needed.
+- **Claude Code**, installed and logged in with your own account.
+- `python3`, `git`, and `bubblewrap` (`sudo apt install python3-venv git bubblewrap`).
+- Optional: the Gemini CLI (for Alice), an NVIDIA GPU (image generation), Tailscale (phone).
+
+## Install, the easy way
+
+Open a terminal in this folder, start Claude Code (`claude`), and say:
+
+> Read BLUEPRINT.md and set up Helix with me.
+
+## Install, by hand
+
+```
+bash install.sh          # asks a few questions, installs to ~/helix
+~/helix/run_tests.sh     # self-check
+~/helix/start_helix.sh   # opens http://127.0.0.1:7777
 ```
 
-Opens on `http://127.0.0.1:7777` — **localhost only**.
+It starts as a blank slate with a few example facts. Nothing in this repository contains anyone
+else's data, logins or keys.
 
-You need the **Claude Code CLI installed and signed in**; that's the one hard requirement. Gemini
-(via `agy`) and the OpenRouter bench are optional and degrade gracefully — a missing tier reports
-itself instead of pretending.
+## Honest status
 
-Full details: **[docs/01-prerequisites](docs/01-prerequisites.md)**.
+- Built and used daily on one machine. Not tested on other distributions, and not on Windows or macOS.
+- On a fresh install, `run_tests.sh` currently reports 3 of 71 test files failing
+  (`controls`, `gapaudit`, `veto/test_sandbox`). They are known and fail the same way on the
+  machine Helix runs on.
 
-## Documentation
-
-| | |
-|---|---|
-| [1 · Prerequisites](docs/01-prerequisites.md) | what you need installed and signed in, and what you don't |
-| [2 · First run](docs/02-first-run.md) | install, boot, what healthy looks like, headless verification |
-| [3 · Memory](docs/03-memory.md) | one fact per file, the recency budget, writing good facts |
-| [4 · The interface](docs/04-the-interface.md) | the WORK and MAP lenses, the rail, keyboard |
-| [5 · The council](docs/05-the-council.md) | ODIN vs ALICE, the six seats, what a convene costs |
-| [6 · Voice](docs/06-voice.md) | Kokoro TTS + faster-whisper STT, both local, both optional |
-
-## Making it yours
-
-`memory/BRAIN.md` ships as a working charter with three sections marked `<!-- FILL IN -->`: who you
-are, what you're working on, and your machine. That file is the whole product. The code is just
-what loads it.
-
-## What this is not
-
-- **Not a product.** It's one person's workbench, published because the memory architecture might
-  be useful to someone else. There is no roadmap and no support.
-- **Not multi-user.** It binds localhost, has no auth, and assumes one human.
-- **Not verified from a clean install.** The install docs are written from reading the code, not
-  from a fresh-machine run. Anything unverified is marked ⚠️ rather than implied to be tested.
-- **Not free at every tier.** ODIN runs on your Claude subscription; the council bills OpenRouter
-  per call. Prices are in [docs/05](docs/05-the-council.md), and they move.
-
-## Licence
-
-MIT. See [LICENSE](LICENSE). Use it, fork it, take the parts you want.
+MIT licence.

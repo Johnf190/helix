@@ -1,0 +1,13 @@
+# Fact categories — the ONLY source of category names. Add your own as projects start.
+# One per line:  name | lobe | colour | one-line description
+# lobe is one of the memory map's seven: helix research finance music mapapp making life
+# A fact declares its category in its first 15 lines:  Category: <name>   (or two: <project> · <kind>)
+personal          | life     | #f2a93b | you, family, home life
+household finance | finance  | #7bd8ff | budget, loans, savings
+rules             | helix    | #c9b8ff | your standing rules and preferences for Odin
+helix             | helix    | #a98bff | Helix builds, upgrades, orders, machines
+research: math    | research | #eab308 | math results and their checks
+research: other   | research | #ff6b81 | tests, studies, experiments
+project: boats    | making   | #e07a5f | example: a building project
+project: app      | mapapp   | #6bcb77 | example: a software project
+project: music    | music    | #f4a6c1 | example: songs, studio

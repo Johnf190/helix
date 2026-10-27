@@ -1,0 +1,3 @@
+# One fact filename per line. These are always loaded in full, every turn. Keep this list short.
+001_how_helix_remembers.md
+002_show_before_you_build.md

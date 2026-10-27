@@ -1,0 +1,14 @@
+# Order 46/46b (item 11): the monthly cold read. A cold session reads the whole fact base and is
+# asked one thing: find the biggest thing in here that is FALSE. Output: workspace/coldread/READS.
+# Env as run_order.sh gives a builder: the subscription's config dir, never an API key.
+[Unit]
+Description=Helix cold read: a cold session reads the whole fact base (monthly)
+
+[Service]
+Type=oneshot
+Environment=CLAUDE_CONFIG_DIR=%h/claude/config
+UnsetEnvironment=ANTHROPIC_API_KEY
+StandardInput=null
+ExecStart=/usr/bin/python3 %h/helix/workspace/coldread/coldread.py run
+TimeoutStartSec=3h
+Nice=10

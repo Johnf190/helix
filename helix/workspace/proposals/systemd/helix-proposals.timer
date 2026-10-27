@@ -1,0 +1,12 @@
+# Order 52 (item 21): the proposal engine, Sundays at 10:00 (clear of the 03:30-05:30 nightly
+# window and the evening builds). A missed week runs at next boot. Odin enables it after his
+# live check; the build does not install it.
+[Unit]
+Description=Helix proposal engine, weekly on Sunday at 10:00
+
+[Timer]
+OnCalendar=Sun *-*-* 10:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

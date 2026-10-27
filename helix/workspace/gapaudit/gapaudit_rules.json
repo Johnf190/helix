@@ -1,0 +1,26 @@
+{
+  "note": "Declared mapping rules (order 36). A work item is covered if a record names it, OR one of these rules covers it, OR NO_RECORD_NEEDED.jsonl opts it out. A rule with no reason is not applied, and the audit says so.",
+  "rules": [
+    {
+      "id": "runs-own-report",
+      "source": "runs",
+      "kind": "own_report",
+      "reason": "A builder run's record is its report, build_orders/reports/ORDER_<NN>_report.md, which builder_run.sh checks with reportcheck. It counts only if THIS run's RUNS line says report_exists: true and the file is there now; a run that died before writing one is not covered by a later run's report."
+    },
+    {
+      "id": "worklane-logged",
+      "source": "worklane",
+      "kind": "log_heading_near",
+      "minutes": 2,
+      "reason": "app.py's _log_turn appends every finished turn to memory/sessions/log.md under a '## YYYY-MM-DD HH:MM' heading (local time), right after the turn's ResultMessage that writes the TURNS line. A work or sched turn with no heading within 2 minutes left no log entry."
+    },
+    {
+      "id": "schedule-logged",
+      "source": "schedules",
+      "kind": "log_heading_after",
+      "minutes": 60,
+      "prompt_chars": 60,
+      "reason": "A scheduled job is a turn whose question is the schedule's prompt, so it lands in log.md as '**You:** <prompt>' under a heading at or after last_run. 60 minutes allows for the nightly's long OpTC retry; the first 60 characters of the prompt must match, so a different turn in that hour does not count."
+    }
+  ]
+}

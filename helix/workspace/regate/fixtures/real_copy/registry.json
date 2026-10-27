@@ -1,0 +1,88 @@
+{
+ "0000": {
+  "claim": "A claim that passes the five-attachment check: notes written in the morning get revised less often than notes written at night.",
+  "registered": "2026-09-22",
+  "status": "open",
+  "predictions": [
+   {
+    "id": "0000-p1",
+    "due": "2026-12-21",
+    "p": 0.6,
+    "metric": "gated_breaks_less_than_ungated",
+    "min_n": 30,
+    "statement": "Example prediction 1 of entry 0000: notes written in the morning get revised less often than notes written at night.",
+    "kill": "Outcome 0 retires entry #0000. Fewer than 30 examples by the due date leaves it open, not dead."
+   }
+  ]
+ },
+ "0001": {
+  "claim": "In this example record, a link written as a full path breaks more often than a short one.",
+  "registered": "2026-09-22",
+  "status": "open",
+  "predictions": [
+   {
+    "id": "0001-p1",
+    "due": "2026-12-21",
+    "p": 0.55,
+    "metric": "abs_breaks_more_than_rel",
+    "min_n": 30,
+    "statement": "Example prediction 1 of entry 0001: in this example record, a link written as a full path breaks more often than a short one.",
+    "kill": "Outcome 0 retires entry #0001. Fewer than 30 examples by the due date leaves it open, not dead."
+   }
+  ]
+ },
+ "0002": {
+  "claim": "Example: a weekly reminder raises the share of finished tasks above one half.",
+  "registered": "2026-09-22",
+  "status": "PASSED its band, scope cut hard by cold review — see #0003",
+  "predictions": [
+   {
+    "id": "0002-p1",
+    "due": "2026-12-21",
+    "p": 0.6,
+    "metric": "manual_prereg3",
+    "statement": "Example prediction 1 of entry 0002: example: a weekly reminder raises the share of finished tasks above one half.",
+    "kill": "Outcome 0 retires entry #0002. Fewer than 30 examples by the due date leaves it open, not dead.",
+    "scored": "2026-09-22",
+    "outcome": 1,
+    "brier": 0.16,
+    "note": "Example note for entry 0002, written for the starter kit. "
+   }
+  ]
+ },
+ "0003": {
+  "claim": "Example: the backup check catches a missing file within one day.",
+  "registered": "2026-09-22",
+  "status": "MARGINAL (0.683 vs a 0.75 band) — same-generator channels chance at 0.502; one band voided as vacuous",
+  "predictions": [
+   {
+    "id": "0003-p1",
+    "due": "2026-12-21",
+    "p": 0.65,
+    "metric": "manual_prereg4",
+    "statement": "Example prediction 1 of entry 0003: example: the backup check catches a missing file within one day.",
+    "kill": "Outcome 0 retires entry #0003. Fewer than 30 examples by the due date leaves it open, not dead.",
+    "scored": "2026-09-22",
+    "outcome": 0,
+    "brier": 0.4225,
+    "note": "Example note for entry 0003, written for the starter kit. "
+   }
+  ],
+  "sealed_code": "d5a37cf"
+ },
+ "0004": {
+  "claim": "Example: shorter answers get fewer follow-up questions than long ones.",
+  "registered": "2026-09-22",
+  "status": "NOT SEALED — host vantage acquired and verified (OpTC eCAR, FLOW MESSAGE carries per-flow byte size); network vantage blocked by a Drive folder quota. Corrected mirror lacks the bro UID, so any join would be 5-tuple+time.",
+  "predictions": [
+   {
+    "id": "0004-p1",
+    "due": "2027-01-31",
+    "p": 0.5,
+    "metric": "manual_prereg5",
+    "statement": "Example prediction 1 of entry 0004: example: shorter answers get fewer follow-up questions than long ones.",
+    "kill": "Outcome 0 retires entry #0004. Fewer than 30 examples by the due date leaves it open, not dead."
+   }
+  ]
+ }
+}

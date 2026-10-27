@@ -1,34 +1,10 @@
-# --- runtime state: never commit ---
-memory/facts/*.md
-memory/sessions/*
-!memory/sessions/.gitkeep
-memory/alice/*.md
-memory/projects.json
-memory/reference/
-workspace/*
-!workspace/.gitkeep
-tts/*
-!tts/.gitkeep
-
-# --- large model assets (see docs/06-voice.md) ---
-models/*
-!models/.gitkeep
-!models/kokoro/
-models/kokoro/*
-!models/kokoro/*.npy
-voices/
-piper/
-
-# --- python ---
+# python
 .venv/
 __pycache__/
 *.pyc
-
-# --- logs, backups, secrets ---
+# logs, backups, secrets
 *.log
-*.log.gz
 *.bak
 *.bak_*
-*.pre_*
 .env
 .env.*

@@ -1,0 +1,186 @@
+#!/usr/bin/python3 -I
+"""helix-vault-verify: read-only check of the vault log against the live ledgers.  (ORDER 19, drive ORDER 20)
+
+Runs as any user, no sudo. Checks the log's hash chain, then for EVERY anchor of each ledger,
+oldest to newest, that the live file's first n lines still hash to what the anchor recorded.
+Then compares the root-owned copy on the odin drive with the log (same checks as helix-vault-add).
+Exit 0 only if the chain is OK, every ledger is OK or NOT ANCHORED, and the drive copy is OK or
+BEHIND (the next add catches it up); otherwise exit 1. An unplugged drive is MISSING and fails.
+--no-drive skips the drive section (e.g. to check the drive copy on its own with --log <drive path>).
+--log PATH, --root PATH (a prefix put in front of each ledger path) and --drive-log PATH are for testing.
+"""
+import fcntl
+import hashlib
+import json
+import os
+import stat
+import sys
+
+LOG = "/var/lib/helix-vault/vault.log"
+LEDGERS = {
+    "facts_ledger": "__HOME__/helix/workspace/factgate/state/FACTS_LEDGER.jsonl",
+    "regate_ledger": "__HOME__/helix/workspace/seam/registry/REGATE_LEDGER.jsonl",
+    "catches": "__HOME__/helix/workspace/catches/CATCHES.jsonl",
+}
+DRIVE_LOG = "__VAULT_DRIVE__/helix-vault/vault.log"
+DRIVE_UID = 0
+MAX_BYTES = 256 * 1024 * 1024
+NL = b"\n"
+
+
+def sha(b):
+    return hashlib.sha256(b).hexdigest()
+
+
+def prefix_end(data, n):
+    pos = 0
+    for _ in range(n):
+        i = data.find(b"\n", pos)
+        if i < 0:
+            return None
+        pos = i + 1
+    return pos
+
+
+def parse_args(argv):
+    log, root, drive = LOG, "", DRIVE_LOG
+    while argv:
+        if len(argv) >= 2 and argv[0] == "--log":
+            log, argv = argv[1], argv[2:]
+        elif len(argv) >= 2 and argv[0] == "--root":
+            root, argv = argv[1].rstrip("/"), argv[2:]
+        elif len(argv) >= 2 and argv[0] == "--drive-log":
+            drive, argv = argv[1], argv[2:]
+        elif argv[0] == "--no-drive":
+            drive, argv = None, argv[1:]
+        else:
+            print("usage: helix-vault-verify [--log PATH] [--root PATH] [--drive-log PATH | --no-drive]",
+                  file=sys.stderr)
+            sys.exit(2)
+    return log, root, drive
+
+
+def check_drive(path, local):
+    """Compare the drive copy with `local` (the log's bytes). Returns (ok, status text)."""
+    if os.path.realpath(path) != path:
+        return False, "UNSAFE (path contains a symlink)"
+    fds = []
+    try:
+        for what, p, flags in (("folder", os.path.dirname(path), os.O_DIRECTORY),
+                               ("file", os.path.basename(path), os.O_NONBLOCK)):
+            fds.append(os.open(p, os.O_RDONLY | flags | os.O_NOFOLLOW | os.O_NOCTTY,
+                               dir_fd=fds[0] if fds else None))
+            st = os.fstat(fds[-1])
+            if st.st_uid != DRIVE_UID or st.st_mode & 0o022:
+                return False, (f"UNSAFE ({what} owned by uid {st.st_uid}, mode {st.st_mode & 0o7777:o}; "
+                               f"must be uid {DRIVE_UID} and not group/world-writable)")
+        if not stat.S_ISREG(st.st_mode):
+            return False, "UNSAFE (not a regular file)"
+        if st.st_size > MAX_BYTES:
+            return False, f"UNSAFE (larger than {MAX_BYTES} bytes)"
+        fcntl.flock(fds[1], fcntl.LOCK_SH)
+        with os.fdopen(os.dup(fds[1]), "rb") as f:
+            data = f.read(MAX_BYTES + 1)
+    except FileNotFoundError:
+        return False, "MISSING"
+    except OSError as e:
+        return False, f"UNSAFE ({e.strerror})"
+    finally:
+        for fd in fds:
+            os.close(fd)
+    if data == local:
+        return True, f"OK ({local.count(NL)} lines, identical)"
+    if local.startswith(data):
+        return True, f"BEHIND ({local.count(NL, len(data))} lines)"
+    i = next((k for k, (x, y) in enumerate(zip(data, local)) if x != y), min(len(data), len(local)))
+    return False, f"DIVERGED at line {local.count(NL, 0, i) + 1}"
+
+
+def check_chain(raw):
+    """Returns (anchors, n_lines, first_broken_seq or None). Anchors come from every parseable line."""
+    lines = raw.splitlines(keepends=True)
+    anchors, prev, broken = [], "genesis", None
+    for seq, line in enumerate(lines, 1):
+        why = None
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            rec, why = None, "not valid JSON"
+        if why is None and not (isinstance(rec, dict) and isinstance(rec.get("entries"), dict)):
+            why = "not an anchor record"
+        elif why is None and rec.get("seq") != seq:
+            why = f"seq is {rec.get('seq')!r}"
+        elif why is None and rec.get("prev") != prev:
+            why = f"prev does not match line {seq - 1}"
+        elif not line.endswith(b"\n"):
+            why = "partial last line"
+        if why and broken is None:
+            broken = (seq, why)
+        if isinstance(rec, dict) and isinstance(rec.get("entries"), dict):
+            for name, e in rec["entries"].items():
+                if isinstance(e, dict) and type(e.get("n")) is int and e["n"] >= 0:
+                    anchors.append((seq, name, e["n"], e.get("sha256")))
+        prev = sha(line)
+    return anchors, len(lines), broken
+
+
+def main(argv):
+    log, root, drive_log = parse_args(argv)
+    try:
+        with open(log, "rb") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)  # add holds LOCK_EX while it writes
+            raw = f.read()
+            # read the drive copy under the same lock: add mirrors to it before it lets go
+            drive = check_drive(drive_log, raw) if drive_log else None
+    except OSError as e:
+        print(f"cannot read vault log {log}: {e.strerror}")
+        return 1
+    anchors, total, broken = check_chain(raw)
+    ok = broken is None
+    if broken:
+        print(f"chain BROKEN at seq {broken[0]} ({broken[1]})")
+    elif total:
+        print(f"chain OK (seq 1..{total})")
+    else:
+        print("chain OK (empty log, nothing anchored yet)")
+
+    for name, path in LEDGERS.items():
+        mine = [a for a in anchors if a[1] == name]
+        if not mine:
+            print(f"{name}: NOT ANCHORED")
+            continue
+        try:
+            with os.fdopen(os.open(root + path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as f:
+                regular = stat.S_ISREG(os.fstat(f.fileno()).st_mode)
+                data = f.read() if regular else b""
+        except OSError:
+            print(f"{name}: MISSING")
+            ok = False
+            continue
+        if not regular:
+            print(f"{name}: UNSAFE (not a regular file)")
+            ok = False
+            continue
+        live_n = data.count(b"\n")
+        status = None
+        for seq, _, n, h in mine:  # oldest to newest; report the first that fails
+            cut = prefix_end(data, n)
+            if cut is None:
+                status = f"SHRUNK (anchor seq {seq} wants {n} lines, live has {live_n})"
+            elif sha(data[:cut]) != h:
+                status = f"REWRITTEN (anchor seq {seq}, {n} lines: live prefix differs)"
+            if status:
+                break
+        if status:
+            ok = False
+            print(f"{name}: {status}")
+        else:
+            print(f"{name}: OK ({len(mine)} anchors, latest seq {mine[-1][0]}, {mine[-1][2]} lines)")
+    if drive:
+        print(f"drive copy: {drive[1]}")
+        ok = ok and drive[0]
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
